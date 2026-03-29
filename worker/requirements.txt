@@ -1,0 +1,10 @@
+# AEXOR HUB Worker Dependencies
+rembg[onnxruntime]
+instaloader
+pillow
+realesrgan
+onnxruntime-gpu
+numpy
+requests
+pybase64
+beautifulsoup4

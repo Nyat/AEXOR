@@ -1,0 +1,40 @@
+# AEXOR HUB // Neural Workstation - Git Ignore Profile
+
+# Dependency Layers
+node_modules/
+package-lock.json
+
+# Build & Execution Artifacts
+dist/
+dist_electron/
+*.exe
+*.dmg
+*.AppImage
+
+# Local Settings & Environment
+.env
+.env.local
+.env.*.local
+
+# Project Specific Data
+backups/
+output/
+.tmp/
+temp/
+logs/
+
+# Development & System
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.project
+.settings/
+
+# Internal Agent Data
+.gemini/
+.agent/
+.agents/
+knowledge/
+brain/
+*.log

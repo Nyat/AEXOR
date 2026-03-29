@@ -1,0 +1,46 @@
+{
+  "name": "aexor-hub",
+  "version": "0.18.9",
+  "description": "High-performance Neural Workstation for Professional Image and Media Processing.",
+  "author": "nihat",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nihat/Aexor-Hub.git"
+  },
+  "main": "src/main.js",
+  "scripts": {
+    "web:dev": "cd web && npm run dev",
+    "electron:dev": ".\\node_modules\\electron\\dist\\electron.exe .",
+    "dev": "concurrently \"npm run web:dev\" \"wait-on http://localhost:3000 && npm run electron:dev\"",
+    "package": "electron-builder --win --dir --x64"
+  },
+  "build": {
+    "appId": "com.aexor.hub",
+    "productName": "AEXOR_HUB",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false,
+    "files": [
+      "src/**/*",
+      "web/dist/**/*",
+      "worker/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "dir"
+    }
+  },
+  "keywords": [],
+  "author": "nihat",
+  "license": "ISC",
+  "description": "AEXOR HUB: High Performance Neural Workstation",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^26.8.1",
+    "electron-packager": "^17.1.2",
+    "wait-on": "^7.2.0"
+  }
+}

@@ -32,7 +32,7 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "dir"
     }
   },
   "keywords": [],

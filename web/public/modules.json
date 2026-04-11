@@ -9,7 +9,7 @@
       "version": "v1.4.2",
       "size": "2.8 GB",
       "icon": "Zap",
-      "requirements": ["torch", "torchvision", "realesrgan", "basicsr"],
+      "requirements": ["torch", "torchvision", "--extra-index-url", "https://download.pytorch.org/whl/cu121", "realesrgan", "basicsr"],
       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AI_UPSCALER.py"
     },
     {

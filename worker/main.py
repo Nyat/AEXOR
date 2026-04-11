@@ -111,8 +111,21 @@ def handle_ecosystem(action, payload):
                     f.write(content)
             
             if reqs:
-                log_event(f"[SYSTEM] Establishing dependencies for {mod_id}...", level="info")
-                subprocess.run([sys.executable, "-m", "pip", "install"] + reqs, check=True)
+                log_event(f"[SYSTEM] Establishing dependencies for {mod_id}... This might take a while.", level="info")
+                process = subprocess.Popen(
+                    [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + reqs,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                for line in iter(process.stdout.readline, ''):
+                    if line: log_event(line.strip(), level="progress")
+                    
+                process.stdout.close()
+                return_code = process.wait()
+                if return_code != 0:
+                    raise Exception(f"Failed to establish {mod_id}. Dependencies rejected by kernel. Exit code {return_code}.")
                 
             return {"status": "SUCCESS", "message": f"{mod_id} established"}
         except Exception as e:
@@ -135,7 +148,17 @@ def handle_ecosystem(action, payload):
         if isolated:
             log_event(f"[SYSTEM] Cleaning up garbage dependencies: {isolated}", level="info")
             try:
-                subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y"] + isolated, check=True)
+                process = subprocess.Popen(
+                    [sys.executable, "-m", "pip", "uninstall", "-y"] + isolated,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+                )
+                for line in iter(process.stdout.readline, ''):
+                    if line: log_event(line.strip(), level="progress")
+                process.stdout.close()
+                process.wait()
             except Exception as e:
                 log_event(f"Cleanup error: {e}", level="error")
                 

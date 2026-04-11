@@ -29,8 +29,8 @@ export const ModuleManager = ({ installedModules, installQueue, installProgress,
   const [availableModules, setAvailableModules] = useState<Module[]>([]);
 
   useEffect(() => {
-    // 1. First try GitHub Raw
-    fetch('https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/modules.json')
+    // 1. First try GitHub Raw with cache-busting timestamp
+    fetch(`https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/modules.json?t=${Date.now()}`)
       .then(res => res.ok ? res.json() : Promise.reject('GitHub error'))
       .then(data => setAvailableModules(data.modules))
       .catch(() => {

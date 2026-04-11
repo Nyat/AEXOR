@@ -4,7 +4,7 @@ import time
 import random
 import requests
 import instaloader
-from ..utils import log_event
+from utils import log_event
 
 # Global Instaloader Instance
 INSTA_LOADER = None

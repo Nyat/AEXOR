@@ -2,9 +2,27 @@ import os
 import torch
 import numpy as np
 from PIL import Image
-from ..utils import log_event, IO_POOL
+from utils import log_event, IO_POOL
+
+import warnings
+from PIL import Image
+
+# Suppress PIL Warnings for very large files
+warnings.simplefilter('ignore', Image.DecompressionBombWarning)
+
+# Monkey-patch torchvision to suppress deprecated functional_tensor warning
+import sys
+try:
+    import torchvision.transforms.functional
+    sys.modules['torchvision.transforms.functional_tensor'] = torchvision.transforms.functional
+except Exception:
+    pass
+
+warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 
 # Global State for Neural Engines
+
 UPSCALERS = {}
 BG_SESSIONS = {}
 
@@ -61,13 +79,28 @@ def get_upscaler(device_name='cuda'):
             log_event(f"Upscaler Init Error: {e}", level="error")
     return UPSCALERS.get(device_name)
 
-def get_bg_session(model_name="birefnet-general"):
+def get_bg_session(model_name="birefnet-general", device_name='cuda'):
     global BG_SESSIONS
-    if model_name not in BG_SESSIONS:
+    # Isolate cache by device to allow hot-swapping
+    cache_key = f"{model_name}_{device_name}"
+    if cache_key not in BG_SESSIONS:
         from rembg import new_session
-        BG_SESSIONS[model_name] = new_session(model_name)
-        log_event(f"NEURAL_LOAD: {model_name.upper()} Evolution loaded.", path="SYSTEM")
-    return BG_SESSIONS[model_name]
+        import onnxruntime as ort
+        
+        if device_name == 'cuda':
+            avail = ort.get_available_providers()
+            if 'CUDAExecutionProvider' in avail:
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            elif 'DmlExecutionProvider' in avail:
+                providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+            else:
+                providers = ['CPUExecutionProvider']
+        else:
+            providers = ['CPUExecutionProvider']
+            
+        BG_SESSIONS[cache_key] = new_session(model_name, providers=providers)
+        log_event(f"NEURAL_LOAD: {model_name.upper()} on {device_name.upper()}", path="SYSTEM")
+    return BG_SESSIONS[cache_key]
 
 def handle_upscaler(payload):
     input_path = payload.get("input_path")
@@ -104,10 +137,11 @@ def handle_bg_remover(payload):
     from rembg import remove
     input_path = payload.get("input_path")
     output_path = payload.get("output_path")
+    device_name = payload.get("device", "cuda")
     
     log_event("[PROGRESS: 5]", path=input_path)
     input_img = Image.open(input_path).convert("RGBA")
-    session = get_bg_session("birefnet-general")
+    session = get_bg_session("birefnet-general", device_name=device_name)
     
     output_img = remove(
         input_img, session=session, alpha_matting=True,

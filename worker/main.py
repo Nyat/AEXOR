@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Unified Utilities and Asset Management
 from utils import log_event, IO_POOL
-from engines.image_engine import handle_format_converter, handle_image_compressor, handle_photo_resizer
-from engines.neural_engine import handle_upscaler, handle_bg_remover
-from engines.social_engine import handle_insta_downloader
+
+# Engines are imported lazily within the neural dispatch map to ensure <1s startup time
+
 
 # Pre-execution: Hardware Calibration & Platform Support
 if sys.stdout.encoding.lower() != 'utf-8':
@@ -51,23 +51,111 @@ def send_telemetry():
 # Start Telemetry
 threading.Thread(target=send_telemetry, daemon=True).start()
 
-# --- NEURAL DISPATCH MAP ---
-NEURAL_HANDLERS = {
-    "AI_UPSCALER": handle_upscaler,
-    "BG_REMOVER": handle_bg_remover,
-    "FORMAT_CONVERTER": handle_format_converter,
-    "IMAGE_COMPRESSOR": handle_image_compressor,
-    "INSTA_DOWNLOADER": handle_insta_downloader,
-    "PHOTO_RESIZER": handle_photo_resizer,
-    "PING": lambda _: {"status": "SUCCESS", "message": "PONG", "version": "V0.18.9-GUARDIAN"}
-}
+import importlib.util
+
+def load_dynamic_handler(action):
+    # Try dynamic load from APPDATA
+    appdata = os.environ.get('APPDATA')
+    if appdata:
+        mod_dir = os.path.join(appdata, 'AEXOR HUB', 'modules')
+        mod_path = os.path.join(mod_dir, f"{action}.py")
+        if os.path.exists(mod_path):
+            try:
+                spec = importlib.util.spec_from_file_location(action, mod_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                return module.handle
+            except Exception as e:
+                log_event(f"DYNAMIC_LOAD_FAIL [{action}]: {e}", level="error")
+                
+    # Fallback to local static modules
+    try:
+        if action == "AI_UPSCALER":
+            from engines.neural_engine import handle_upscaler; return handle_upscaler
+        elif action == "BG_REMOVER":
+            from engines.neural_engine import handle_bg_remover; return handle_bg_remover
+        elif action == "FORMAT_CONVERTER":
+            from engines.image_engine import handle_format_converter; return handle_format_converter
+        elif action == "IMAGE_COMPRESSOR":
+            from engines.image_engine import handle_image_compressor; return handle_image_compressor
+        elif action == "INSTA_DOWNLOADER":
+            from engines.social_engine import handle_insta_downloader; return handle_insta_downloader
+        elif action == "PHOTO_RESIZER":
+            from engines.image_engine import handle_photo_resizer; return handle_photo_resizer
+        elif action == "VIZYON_RESIZER":
+            from engines.vizyon_engine import handle_vizyon_resizer; return handle_vizyon_resizer
+    except Exception as e:
+        log_event(f"FALLBACK_LOAD_FAIL [{action}]: {e}", level="error")
+    return None
+
+import urllib.request
+def handle_ecosystem(action, payload):
+    appdata = os.environ.get('APPDATA')
+    mod_dir = os.path.join(appdata, 'AEXOR HUB', 'modules') if appdata else ""
+    if not mod_dir: return {"status": "ERROR", "message": "APPDATA env missing"}
+    os.makedirs(mod_dir, exist_ok=True)
+    
+    if action == "INSTALL_MODULE":
+        mod_id = payload.get("id")
+        url = payload.get("url")
+        reqs = payload.get("requirements", [])
+        token = payload.get("token", "")
+        
+        try:
+            if url:
+                req = urllib.request.Request(url)
+                if token: req.add_header('Authorization', f'token {token}')
+                with urllib.request.urlopen(req) as response:
+                    content = response.read()
+                with open(os.path.join(mod_dir, f"{mod_id}.py"), "wb") as f:
+                    f.write(content)
+            
+            if reqs:
+                log_event(f"[SYSTEM] Establishing dependencies for {mod_id}...", level="info")
+                subprocess.run([sys.executable, "-m", "pip", "install"] + reqs, check=True)
+                
+            return {"status": "SUCCESS", "message": f"{mod_id} established"}
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    if action == "CHECK_DEPS":
+        target = set(payload.get("target_reqs", []))
+        other = set(payload.get("all_other_reqs", []))
+        return {"status": "SUCCESS", "isolated": list(target - other)}
+        
+    if action == "UNINSTALL_MODULE":
+        mod_id = payload.get("id")
+        isolated = payload.get("isolated_deps", [])
+        
+        py_path = os.path.join(mod_dir, f"{mod_id}.py")
+        if os.path.exists(py_path):
+            try: os.remove(py_path)
+            except: pass
+            
+        if isolated:
+            log_event(f"[SYSTEM] Cleaning up garbage dependencies: {isolated}", level="info")
+            try:
+                subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y"] + isolated, check=True)
+            except Exception as e:
+                log_event(f"Cleanup error: {e}", level="error")
+                
+        return {"status": "SUCCESS", "message": f"{mod_id} uninstalled"}
+
+    return {"status": "ERROR", "message": "Unknown ecosystem command"}
 
 def process_command(cmd_data):
     action = cmd_data.get("action")
     payload = cmd_data.get("payload", {})
     
+    if action == "PING":
+        return {"status": "SUCCESS", "message": "PONG", "version": "V0.18.9-GUARDIAN"}
+    if action in ["INSTALL_MODULE", "UNINSTALL_MODULE", "CHECK_DEPS"]:
+        res = handle_ecosystem(action, payload)
+        res["action"] = action
+        return res
+        
     try:
-        handler = NEURAL_HANDLERS.get(action)
+        handler = load_dynamic_handler(action)
         if handler:
             result = handler(payload)
             result["action"] = action

@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Zap, 
   Layers, 
-  RefreshCw, 
-  Shrink, 
-  Instagram, 
   Scaling,
   HardDrive,
   Minus,
@@ -17,10 +14,23 @@ import { UpscalerSettings } from './ModulePanels/UpscalerSettings';
 import { CompressorSettings } from './ModulePanels/CompressorSettings';
 import { ConverterSettings } from './ModulePanels/ConverterSettings';
 import { InstaSettings } from './ModulePanels/InstaSettings';
+import { ResizerSettings } from './ModulePanels/ResizerSettings';
+import { ModuleManager } from './ModuleManager';
 
 export const Dashboard = () => {
-  const [activeModule, setActiveModule] = React.useState('AI_UPSCALER');
+
+  const [installedModules, setInstalledModules] = React.useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('aexor-hub-modules');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [installQueue, setInstallQueue] = React.useState<string[]>([]);
+  const [installProgress, setInstallProgress] = React.useState<number>(0);
+  const [installPhase, setInstallPhase] = React.useState<string>('');
+  const [activeModule, setActiveModule] = React.useState(() => installedModules.length > 0 ? installedModules[0] : 'MODULE_MANAGER');
   const [telemetry, setTelemetry] = React.useState({ cpu: 0, ram: 0, ram_mb: 0, gpu: 0, vram_mb: 0, gpu_name: '' });
+
   const [selectedFiles, setSelectedFiles] = React.useState<string[]>([]);
   const [targetDir, setTargetDir] = React.useState(() => {
     return localStorage.getItem('aexor-hub-target-dir') || 'E:/AntiGravity/Aexor-Hub/output';
@@ -30,12 +40,10 @@ export const Dashboard = () => {
   const [isTaskRunning, setIsTaskRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [visibleProgress, setVisibleProgress] = useState(0);
-  const [processType, setProcessType] = useState('');
   const [processLabel, setProcessLabel] = useState('');
   const [processIndex, setProcessIndex] = useState(0);
   const [batchProgress, setBatchProgress] = useState<Record<string, number>>({});
-  const [filePreviews, setFilePreviews] = React.useState<{[key: string]: string}>({});
-  const logContainerRef = React.useRef<HTMLDivElement>(null);
+  const [_filePreviews, setFilePreviews] = React.useState<{[key: string]: string}>({});
   const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = React.useState(false);
   const [device, setDevice] = React.useState<'cuda' | 'cpu'>(() => {
@@ -47,7 +55,11 @@ export const Dashboard = () => {
     upscale: 2,
     instaUrl: '',
     instaSessionId: localStorage.getItem('aexor-hub-insta-session') || '',
+    resizerResolution: 'HD',
+    resizerMode: 'FIT',
+    resizerBg: 'BLACK'
   });
+
   const [dotCount, setDotCount] = React.useState(1);
 
   React.useEffect(() => {
@@ -73,7 +85,79 @@ export const Dashboard = () => {
     };
   }, []);
 
+  React.useEffect(() => {
+    localStorage.setItem('aexor-hub-modules', JSON.stringify(installedModules));
+  }, [installedModules]);
+
+  const handleInstallModule = (mod: any) => {
+    if (!mod || !mod.id) return;
+    if (installQueue.includes(mod.id) || installedModules.includes(mod.id)) return;
+    
+    setInstallQueue(prev => [...prev, mod.id]);
+    setInstallPhase('ESTABLISHING_SECURE_CONNECTION...');
+    setInstallProgress(25);
+    addLog(`INITIATING_SECURE_UPLINK: ${mod.id}`, 'info');
+
+    // @ts-ignore
+    window.electronAPI?.runTask({
+       action: 'INSTALL_MODULE',
+       payload: {
+           id: mod.id,
+           url: mod.url,
+           requirements: mod.requirements,
+           token: ''
+       }
+    }).then((res: any) => {
+       if (res && res.status === 'SUCCESS') {
+          setInstallProgress(100);
+          setInstallPhase('FINALIZING_ENVIRONMENT...');
+          setTimeout(() => {
+             setInstalledModules(prev => [...prev, mod.id].sort());
+             setInstallQueue(prev => prev.filter(id => id !== mod.id));
+             setInstallProgress(0);
+             setInstallPhase('');
+             addLog(`MODULE_SECURED: ${mod.id} READY FOR EXECUTION`, 'success');
+          }, 800);
+       } else {
+          setInstallQueue(prev => prev.filter(id => id !== mod.id));
+          addLog(`MODULE_INSTALL_FAILED: ${res?.message}`, 'error');
+          setInstallProgress(0);
+          setInstallPhase('');
+       }
+    }).catch((e: any) => {
+        setInstallQueue(prev => prev.filter(id => id !== mod.id));
+        addLog(`IPC_ERROR: ${e?.message || e}`, 'error');
+        setInstallProgress(0);
+        setInstallPhase('');
+    });
+  };
+
+  const handleUninstallModule = async (id: string, reqs: string[] = []) => {
+    addLog(`INITIATING_MODULE_PURGE: ${id}`, 'info');
+    try {
+        // @ts-ignore
+        const checkRes = await window.electronAPI?.runTask({
+            action: 'CHECK_DEPS',
+            payload: { target_reqs: reqs, all_other_reqs: [] } // Basic cleanup bypass
+        });
+        const isolated = checkRes?.isolated || [];
+        
+        // @ts-ignore
+        await window.electronAPI?.runTask({
+            action: 'UNINSTALL_MODULE',
+            payload: { id, isolated_deps: isolated }
+        });
+        
+        setInstalledModules(prev => prev.filter(m => m !== id));
+        if (activeModule === id) setActiveModule('MODULE_MANAGER');
+        addLog(`MODULE_UNLINKED: ${id} REMOVED FROM WORKSPACE`, 'error');
+    } catch (e: any) {
+        addLog(`UNINSTALL_FAIL: ${e?.message || e}`, 'error');
+    }
+  };
+
   const addLog = (text: string, type: 'info' | 'success' | 'error' | 'progress' = 'info') => {
+
     const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     setLogs(prev => [{ text: `[${timestamp}] ${text}`, type }, ...prev]);
   };
@@ -124,20 +208,9 @@ export const Dashboard = () => {
     localStorage.setItem('aexor-hub-device', device);
   }, [device]);
 
-  const getProcessDisplayLabel = (type: string, upscale: number) => {
-    switch (type) {
-      case 'AI_UPSCALER': return `UPSCALING_X${upscale}_NEURAL`;
-      case 'BG_REMOVER': return 'NEURAL_ALPHA_EXTRACTION';
-      case 'FORMAT_CONVERTER': return 'BATCH_FORMAT_TRANSCODE';
-      case 'IMAGE_COMPRESSOR': return 'LOSSLESS_NEURAL_COMPRESS';
-      case 'INSTA_DOWNLOADER': return 'INSTA_MEDIA_UPLINK';
-      case 'PHOTO_RESIZER': return 'DYNAMIC_RESAMPLING_PASS';
-      default: return 'NEURAL_EXECUTION_ACTIVE';
-    }
-  };
 
   const getEstimatedPeakTFLOPS = (name: string) => {
-    const gpu = name.toUpperCase();
+    const gpu = name.toUpperCase() || '';
     if (gpu.includes('4090')) return 330.8;
     if (gpu.includes('4080')) return 197.8;
     if (gpu.includes('4070')) return 116.6;
@@ -291,7 +364,6 @@ export const Dashboard = () => {
       setBatchProgress({});
       setProgress(0); 
       setVisibleProgress(0); 
-      setProcessType(activeModule);
       addLog(`INITIATING_${activeModule}_BATCH_SEQUENCE...`, 'progress');
 
       const filesToProcess = isInsta ? [null] : selectedFiles;
@@ -319,12 +391,21 @@ export const Dashboard = () => {
         if ((sourceExt === 'heic' || sourceExt === 'heif') && activeModule !== 'FORMAT_CONVERTER' && activeModule !== 'IMAGE_COMPRESSOR') {
            finalExt = 'webp';
         }
+        if (activeModule === 'PHOTO_RESIZER' || activeModule === 'VIZYON_RESIZER') {
+           finalExt = 'webp';
+        }
         
         const outputName = `${baseName}${suffix}.${finalExt}`;
+
         const outputPath = `${targetDir}/${outputName}`;
 
         setProcessLabel(fileName);
         addLog(`PROCESSING [${completedCount + 1}/${filesToProcess.length}]: ${fileName}`, 'info');
+
+        let rW = 1280; let rH = 720;
+        if (settings.resizerResolution === 'FHD') { rW = 1920; rH = 1080; }
+        if (settings.resizerResolution === 'QHD') { rW = 2560; rH = 1440; }
+        if (settings.resizerResolution === '4K') { rW = 3840; rH = 2160; }
 
         // @ts-ignore
         const res: any = await window.electronAPI?.runTask({
@@ -338,9 +419,14 @@ export const Dashboard = () => {
             upscale: settings.upscale,
             device: device,
             output_dir: targetDir,
-            session_id: settings.instaSessionId
+            session_id: settings.instaSessionId,
+            width: rW,
+            height: rH,
+            resize_mode: settings.resizerMode,
+            bg_color: settings.resizerBg
           }
         });
+
 
         if (res && res.status === 'SUCCESS') {
           setBatchProgress(prev => ({ ...prev, [file as string]: 100 }));
@@ -448,12 +534,25 @@ export const Dashboard = () => {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar activeModule={activeModule} setActiveModule={setActiveModule}>
+        <Sidebar activeModule={activeModule} setActiveModule={setActiveModule} installedModules={installedModules}>
           <TelemetryView telemetry={telemetry} />
         </Sidebar>
 
-        <main className="flex-1 flex flex-col bg-[radial-gradient(circle_at_top_right,rgba(0,243,255,0.03),transparent_40%)] no-drag">
-          <div className="p-8 pb-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {activeModule === 'MODULE_MANAGER' ? (
+               <ModuleManager 
+                 installedModules={installedModules}
+                 installQueue={installQueue}
+                 installProgress={installProgress}
+                 installPhase={installPhase}
+                 onInstall={handleInstallModule}
+                 onUninstall={handleUninstallModule}
+               />
+            ) : (
+               <main className="flex-1 flex flex-col bg-[radial-gradient(circle_at_top_right,rgba(0,243,255,0.03),transparent_40%)] no-drag overflow-hidden">
+            <div className="p-8 pb-0 flex-1 flex flex-col min-h-0">
+
             <div className="flex justify-between items-end mb-6">
               <div>
                 <h1 className="text-3xl font-anta tracking-[0.2em] text-white mb-2 uppercase">{activeModule}</h1>
@@ -463,8 +562,10 @@ export const Dashboard = () => {
                   {activeModule === 'FORMAT_CONVERTER' && "Lightning fast batch image format conversion [All formats supported]."}
                   {activeModule === 'IMAGE_COMPRESSOR' && "Lossless/Lossy compression for optimized storage [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'INSTA_DOWNLOADER' && "Extract high-quality media from Instagram links."}
-                  {activeModule === 'PHOTO_RESIZER' && "Standardized 1000x1000 white-canvas centering (800px bounds) [.webp output]."}
+                  {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling (HD to 4K / FIT / FILL)."}
+                  {activeModule === 'VIZYON_RESIZER' && "Personal Git-Ignored workspace for Vizyon standards (1000x1000 bounds)."}
                 </p>
+
               </div>
 
               <div className="flex items-center gap-2 mb-2 p-1 bg-black/60 border border-white/10 rounded-lg group/hw transition-all shadow-xl">
@@ -477,54 +578,94 @@ export const Dashboard = () => {
                 <InstaSettings instaUrl={settings.instaUrl} setInstaUrl={(val) => setSettings({...settings, instaUrl: val})} instaSessionId={settings.instaSessionId} setInstaSessionId={(val) => { setSettings({...settings, instaSessionId: val}); localStorage.setItem('aexor-hub-insta-session', val); }} />
             ) : (
               <div 
-                className={`flex-1 border-2 border-dashed h-44 flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden group mb-4 ${isDragging ? 'border-[#00F3FF] bg-[#00F3FF]/5' : 'border-white/5 hover:border-white/10'} ${isTaskRunning ? 'pointer-events-none' : 'cursor-pointer'}`}
+                className={`flex-1 border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden group mb-4 ${isDragging ? 'border-[#00F3FF] bg-[#00F3FF]/5' : 'border-white/5 hover:border-white/10'} ${isTaskRunning ? 'pointer-events-none' : 'cursor-pointer'}`}
                 onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onClick={handleSelectFile}
               >
                   <div className="absolute inset-0 neural-grid opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                  
                   {isTaskRunning && (
-                    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 backdrop-blur-md">
-                        <div className="absolute top-0 left-0 h-[2px] bg-[#00F3FF] transition-all duration-300 shadow-[0_0_15px_rgba(0,243,255,0.8)]" style={{ width: `${visibleProgress}%` }}></div>
-                        <div className="flex flex-col items-center gap-6">
+                    <div className="absolute inset-0 bg-[#0A0A0B]/80 flex flex-col items-center justify-center z-50 backdrop-blur-xl">
+                        <div className="absolute top-0 left-0 h-[2px] bg-[#00F3FF] transition-all duration-300 shadow-[0_0_15px_rgba(0,243,255,1)]" style={{ width: `${visibleProgress}%` }}></div>
+                        <div className="scanline-overlay opacity-20"></div>
+                        
+                        <div className="flex flex-col items-center gap-6 relative">
                            <div className="flex flex-col items-center">
-                              <span className="font-anta text-[10px] tracking-[0.4em] text-[#00F3FF] mb-2 uppercase animate-pulse">PROCESSING_UPLINK</span>
-                              <span className="font-orbitron text-4xl font-black text-white tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">{Math.floor(visibleProgress)}<span className="text-[#00F3FF] text-xl opacity-50 ml-1">%</span></span>
+                              <span className="font-anta text-[10px] tracking-[0.6em] text-[#00F3FF] mb-3 uppercase animate-pulse">EXECUTING_NEURAL_SEQUENCE</span>
+                              <div className="relative">
+                                <span className="font-orbitron text-6xl font-black text-white tracking-widest drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]">{Math.floor(visibleProgress)}<span className="text-[#00F3FF] text-xl opacity-50 ml-1">%</span></span>
+                              </div>
                            </div>
-                           <div className="flex flex-col items-center">
-                              <span className="font-oxanium text-[9px] text-gray-500 uppercase tracking-[0.2em] mb-1">active_module</span>
-                              <span className="px-3 py-1 bg-white/5 border border-white/10 font-anta text-[10px] tracking-[0.2em] text-[#00FF00]">{getProcessDisplayLabel(processType, settings.upscale)}</span>
+
+                           <div className="flex gap-8 mt-2 opacity-60">
+                              <div className="flex flex-col items-center">
+                                 <span className="font-oxanium text-[8px] text-gray-500 uppercase tracking-widest mb-1">PROCESSED_LINK</span>
+                                 <span className="px-3 py-1 bg-white/5 border border-white/10 font-anta text-[9px] tracking-widest text-[#00FF00] uppercase">{activeModule}</span>
+                              </div>
+                              <div className="flex flex-col items-center">
+                                 <span className="font-oxanium text-[8px] text-gray-500 uppercase tracking-widest mb-1">HARDWARE_UPLINK</span>
+                                 <span className="px-3 py-1 bg-white/5 border border-white/10 font-anta text-[9px] tracking-widest text-[#F205FF] uppercase">{device === 'cuda' ? 'GPU_ACCEL' : 'CPU_SEQUENTIAL'}</span>
+                              </div>
                            </div>
+
                            {selectedFiles.length > 1 && (
-                             <div className="flex flex-col items-center mt-2">
-                                <span className="font-oxanium text-[9px] text-gray-400 uppercase tracking-widest mb-2">batch_status [{processIndex + 1}/{selectedFiles.length}]</span>
-                                <div className="flex gap-1.5 h-1">
-                                   {selectedFiles.map((_, idx) => ( <div key={idx} className={`w-6 rounded-full transition-all duration-500 ${idx === processIndex ? 'bg-[#00F3FF] w-12 shadow-[0_0_8px_#00F3FF]' : (idx < processIndex ? 'bg-[#00FF00]' : 'bg-white/10')}`}></div> ))}
+                             <div className="flex flex-col items-center mt-2 w-64">
+                                <span className="font-oxanium text-[8px] text-gray-400 uppercase tracking-widest mb-3">BATCH_QUEUE_PROGRESS [{processIndex + 1}/{selectedFiles.length}]</span>
+                                <div className="flex gap-1 w-full h-[3px]">
+                                   {selectedFiles.map((_, idx) => ( 
+                                      <div key={idx} className={`flex-1 rounded-full transition-all duration-500 ${idx === processIndex ? 'bg-[#00F3FF] shadow-[0_0_10px_#00F3FF] scale-y-150' : (idx < processIndex ? 'bg-[#00FF00]/40' : 'bg-white/5')}`}></div> 
+                                   ))}
                                 </div>
                              </div>
                            )}
-                           <div className="flex items-center gap-2 mt-4">
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF00] animate-pulse"></div>
-                              <span className="font-mono text-[9px] text-[#00FF00] tracking-widest opacity-80 truncate max-w-[200px]">{processLabel}</span>
+
+                           <div className="flex items-center gap-3 mt-4 bg-black/40 px-4 py-2 border border-white/5 rounded-full">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF00] animate-pulse shadow-[0_0_5px_#00FF00]"></div>
+                              <span className="font-mono text-[9px] text-[#00FF00] tracking-widest opacity-80 truncate max-w-[300px]">{processLabel || 'Initializing neural buffers...'}</span>
                            </div>
                         </div>
                     </div>
                   )}
-                  {isTaskRunning && <div className="absolute inset-0 animate-neural-sweep z-10"></div>}
-                  {!isTaskRunning && (
+
+                  {!isTaskRunning && selectedFiles.length === 0 && (
                     <>
                       <div className="scanline-overlay"></div>
-                      <div className={`w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#00F3FF]/10 group-hover:shadow-[0_0_20px_rgba(0,243,255,0.3)] transition-all duration-500 mt-12 ${selectedFiles.length > 0 ? 'text-[#00F3FF]' : 'text-gray-600'}`}>
-                        <div className={selectedFiles.length > 0 ? 'animate-glow-pulse' : ''}>
-                          {activeModule === 'AI_UPSCALER' && <Zap size={24} />}
-                          {activeModule === 'BG_REMOVER' && <Layers size={24} />}
-                          {activeModule === 'FORMAT_CONVERTER' && <RefreshCw size={24} />}
-                          {activeModule === 'IMAGE_COMPRESSOR' && <Shrink size={24} />}
-                          {activeModule === 'INSTA_DOWNLOADER' && <Instagram size={24} />}
-                          {activeModule === 'PHOTO_RESIZER' && <Scaling size={24} />}
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-[#00F3FF]/10 group-hover:shadow-[0_0_30px_rgba(0,243,255,0.2)] transition-all duration-500 border border-white/5">
+                          <Layers className="text-gray-600 group-hover:text-[#00F3FF] transition-colors" size={28} />
                         </div>
+                        <div className="font-anta text-xl tracking-[0.3em] mb-2 uppercase text-white/50 group-hover:text-white transition-colors">DROP ASSETS OR CLICK TO UPLINK</div>
+                        <div className="font-oxanium text-[10px] text-gray-600 tracking-[0.2em] uppercase">SECURE_NEURAL_UPLINK_READY</div>
                       </div>
-                      <div className={`font-anta text-xl tracking-[0.2em] mb-2 uppercase text-center text-white/40 mb-6`}><span>{selectedFiles.length > 0 ? "ASSETS_LINK_ESTABLISHED" : "DROP ASSETS OR CLICK TO UPLINK"}</span></div>
-                      <div className="font-oxanium text-xs text-gray-500 max-w-md text-center truncate px-10">{selectedFiles.length > 0 ? `${selectedFiles.length} files selected` : "Waiting for secure uplink..."}</div>
                     </>
+                  )}
+
+                  {!isTaskRunning && selectedFiles.length > 0 && (
+                    <div className="absolute inset-0 p-4 overflow-y-auto no-drag custom-scrollbar">
+                       <div className="grid grid-cols-6 gap-3">
+                          {selectedFiles.map((path, idx) => (
+                             <div key={path} className="aspect-square relative group/item animate-fade-in" style={{ animationDelay: `${idx * 0.05}s` }}>
+                                <div className="absolute inset-0 bg-black/40 rounded-lg overflow-hidden border border-white/10 group-hover/item:border-[#00F3FF]/30 transition-all flex items-center justify-center">
+                                   {_filePreviews[path] ? (
+                                      <img src={_filePreviews[path]} className="w-full h-full object-cover opacity-60 group-hover/item:opacity-100 transition-opacity" alt="" />
+                                   ) : (
+                                      <div className="text-white/10"><Scaling size={20} /></div>
+                                   )}
+                                   <div className="absolute bottom-1 right-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                      <div className="bg-[#FF0055] p-1 rounded-md cursor-pointer hover:bg-red-600" onClick={(e) => {
+                                         e.stopPropagation();
+                                         setSelectedFiles(prev => prev.filter(p => p !== path));
+                                      }}>
+                                         <X size={10} className="text-white" />
+                                      </div>
+                                   </div>
+                                </div>
+                             </div>
+                          ))}
+                          <div className="aspect-square border border-dashed border-white/10 rounded-lg flex items-center justify-center hover:bg-white/5 transition-all text-white/20 hover:text-[#00F3FF] cursor-pointer" onClick={(e) => { e.stopPropagation(); handleSelectFile(); }}>
+                             <Zap size={20} />
+                          </div>
+                       </div>
+                    </div>
                   )}
               </div>
             )}
@@ -539,16 +680,27 @@ export const Dashboard = () => {
                       {activeModule === 'AI_UPSCALER' && <UpscalerSettings upscale={settings.upscale} setUpscale={(val) => setSettings({...settings, upscale: val})} />}
                       {activeModule === 'FORMAT_CONVERTER' && <ConverterSettings format={settings.format} setFormat={(val) => setSettings({...settings, format: val})} />}
                       {activeModule === 'IMAGE_COMPRESSOR' && <CompressorSettings quality={settings.quality} setQuality={(val) => setSettings({...settings, quality: val})} />}
+                      {activeModule === 'PHOTO_RESIZER' && <ResizerSettings 
+                         resolutionLabel={settings.resizerResolution} setResolutionLabel={(v) => setSettings({...settings, resizerResolution: v})}
+                         resizeMode={settings.resizerMode} setResizeMode={(v) => setSettings({...settings, resizerMode: v})}
+                         bgColor={settings.resizerBg} setBgColor={(v) => setSettings({...settings, resizerBg: v})}
+                      />}
                   </div>
+
                   <button disabled={isTaskRunning} onClick={runActiveTask} className={`px-8 py-3 font-orbitron text-xs tracking-[0.3em] transition-all rounded shadow-[0_0_20px_rgba(0,243,255,0.2)] active:scale-95 border-none outline-none cursor-pointer ${isTaskRunning ? 'bg-gray-700 text-gray-400 cursor-not-allowed shadow-none' : 'bg-[#00F3FF] text-black hover:bg-[#00F3FF]/80'}`}>
                     {isTaskRunning ? 'RUNNING...' : 'INITIATE'}
                   </button>
                </div>
             </div>
+            <div className="h-[200px] w-full flex-shrink-0"></div>
+            </div>
+            </main>
+          )}
           </div>
           <SystemLog logs={logs} isTaskRunning={isTaskRunning} activeModule={activeModule} dots={dots} />
-        </main>
+        </div>
       </div>
     </div>
   );
 };
+

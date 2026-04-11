@@ -61,7 +61,22 @@ function createWindow() {
 }
 
 function startPythonWorker() {
-  const workerPath = path.join(app.getAppPath(), 'worker', 'main.py');
+  const fs = require('fs');
+  const appDataStr = process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + "/.local/share");
+  const aexorDir = path.join(appDataStr, 'AEXOR HUB');
+  const venvDir = path.join(aexorDir, 'venv');
+  const venvPython = process.platform === 'win32' 
+      ? path.join(venvDir, 'Scripts', 'python.exe')
+      : path.join(venvDir, 'bin', 'python');
+
+  if (!fs.existsSync(aexorDir)) {
+      fs.mkdirSync(aexorDir, { recursive: true });
+  }
+
+  let workerPath = path.join(app.getAppPath(), 'worker', 'main.py');
+  if (app.isPackaged) {
+    workerPath = workerPath.replace('app.asar', 'app.asar.unpacked');
+  }
   
   const win = () => BrowserWindow.getAllWindows()[0];
   const sendLog = (text, level = 'info') => {
@@ -95,37 +110,47 @@ function startPythonWorker() {
     });
 
     pythonProcess = proc;
-    sendLog(`[NEURAL_WORKER]: ATTACHED_TO_STREAM`, 'info');
+    sendLog(`[NEURAL_WORKER]: ATTACHED_TO_STREAM (Isolated Venv)`, 'info');
   }
 
-  function attemptSpawn(commands) {
-    if (commands.length === 0) {
-      sendLog(`CRITICAL: External Neural Workstation (Python 3.10+) not detected. Operation suspended.`, 'error');
-      return;
-    }
-
-    const cmd = commands.shift();
-    const proc = spawn(cmd, ['-u', workerPath], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: { ...process.env, PYTHONUNBUFFERED: '1' }
-    });
-
-    proc.on('error', (err) => {
-      if (err.code === 'ENOENT') {
-        attemptSpawn(commands);
-      } else {
-        sendLog(`SPAWN_FATAL: ${err.message}`, 'error');
-      }
-    });
-
-    // If starts successfully, stdout will usually have the first line (log or telemetry)
-    // We bind listeners and hope it stays alive
-    setupWorkerListeners(proc);
+  function runTargetPython() {
+      sendLog(`[MAIN]: INITIATING_NEURAL_UPLINK: ${workerPath}`, 'info');
+      const proc = spawn(venvPython, ['-u', workerPath], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
+      });
+      proc.on('error', (err) => {
+          sendLog(`SPAWN_FATAL: Isolated Python engine failed to launch. ${err.message}`, 'error');
+      });
+      setupWorkerListeners(proc);
   }
 
-  sendLog(`[MAIN]: INITIATING_NEURAL_UPLINK: ${workerPath}`, 'info');
-  attemptSpawn(['python', 'python3', 'py']);
+  // 1. Check if Venv exists
+  if (!fs.existsSync(venvPython)) {
+      sendLog(`[SYSTEM]: INITIALIZING NEURAL KERNEL (VENV CREATION)... PLEASE WAIT.`, 'info');
+      
+      const { exec } = require('child_process');
+      // Find a system python to create the venv
+      exec(`python -m venv "${venvDir}"`, (error, stdout, stderr) => {
+           if (error) {
+               sendLog(`[SYSTEM_CRITICAL]: Failed to create VENV! ${stderr}`, 'error');
+           } else {
+               sendLog(`[SYSTEM]: VENV Created. Installing core kernel packages...`, 'info');
+               const pipExe = process.platform === 'win32' ? path.join(venvDir, 'Scripts', 'pip.exe') : path.join(venvDir, 'bin', 'pip');
+               exec(`"${pipExe}" install psutil requests`, (err3) => {
+                  if (err3) {
+                      sendLog(`[SYSTEM_CRITICAL]: Failed to install core packages!`, 'error');
+                  } else {
+                      sendLog(`[SYSTEM]: KERNEL INITIALIZED SUCCESSFULLY.`, 'info');
+                      runTargetPython();
+                  }
+               });
+           }
+      });
+  } else {
+      runTargetPython();
+  }
 }
 
 app.whenReady().then(() => {

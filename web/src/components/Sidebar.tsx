@@ -27,58 +27,57 @@ const NavItem = ({ icon: Icon, label, active = false, onClick }: NavItemProps) =
   </div>
 );
 
+const AVAILABLE_MODULES = [
+  { id: 'AI_UPSCALER', label: 'AI_UPSCALER', icon: Zap },
+  { id: 'BG_REMOVER', label: 'BG_REMOVER', icon: Layers },
+  { id: 'FORMAT_CONVERTER', label: 'FORMAT_CONVERTER', icon: RefreshCw },
+  { id: 'IMAGE_COMPRESSOR', label: 'IMAGE_COMPRESSOR', icon: Shrink },
+  { id: 'INSTA_DOWNLOADER', label: 'INSTA_DOWNLOADER', icon: Instagram },
+  { id: 'PHOTO_RESIZER', label: 'PHOTO_RESIZER', icon: Scaling },
+  { id: 'VIZYON_RESIZER', label: 'VIZYON_RESIZER', icon: Scaling }
+];
+
 interface SidebarProps {
   activeModule: string;
   setActiveModule: (module: string) => void;
-  children?: React.ReactNode; // For Telemetry or other bottom content
+  installedModules?: string[];
+  children?: React.ReactNode; 
 }
 
-export const Sidebar = ({ activeModule, setActiveModule, children }: SidebarProps) => {
+export const Sidebar = ({ activeModule, setActiveModule, installedModules = [], children }: SidebarProps) => {
   return (
     <div className="w-56 border-r border-white/5 flex flex-col no-drag bg-black/40">
-      <nav className="mt-6">
-        <NavItem 
-          icon={Zap} 
-          label="AI_UPSCALER" 
-          active={activeModule === 'AI_UPSCALER'} 
-          onClick={() => setActiveModule('AI_UPSCALER')} 
-        />
-        <NavItem 
-          icon={Layers} 
-          label="BG_REMOVER" 
-          active={activeModule === 'BG_REMOVER'} 
-          onClick={() => setActiveModule('BG_REMOVER')} 
-        />
-        <NavItem 
-          icon={RefreshCw} 
-          label="FORMAT_CONVERTER" 
-          active={activeModule === 'FORMAT_CONVERTER'} 
-          onClick={() => setActiveModule('FORMAT_CONVERTER')} 
-        />
-        <NavItem 
-          icon={Shrink} 
-          label="IMAGE_COMPRESSOR" 
-          active={activeModule === 'IMAGE_COMPRESSOR'} 
-          onClick={() => setActiveModule('IMAGE_COMPRESSOR')} 
-        />
-        <NavItem 
-          icon={Instagram} 
-          label="INSTA_DOWNLOADER" 
-          active={activeModule === 'INSTA_DOWNLOADER'} 
-          onClick={() => setActiveModule('INSTA_DOWNLOADER')} 
-        />
-        <NavItem 
-          icon={Scaling} 
-          label="PHOTO_RESIZER" 
-          active={activeModule === 'PHOTO_RESIZER'} 
-          onClick={() => setActiveModule('PHOTO_RESIZER')} 
-        />
+      <nav className="mt-6 flex flex-col gap-1">
+        {installedModules.length === 0 && (
+          <div className="px-4 py-4 text-center">
+             <span className="font-oxanium text-xs tracking-widest text-[#00F3FF]/50 uppercase">No active links</span>
+          </div>
+        )}
+        
+        {AVAILABLE_MODULES.filter(m => installedModules.includes(m.id)).map(mod => (
+          <NavItem 
+            key={mod.id}
+            icon={mod.icon} 
+            label={mod.label} 
+            active={activeModule === mod.id} 
+            onClick={() => setActiveModule(mod.id)} 
+          />
+        ))}
       </nav>
 
-      {/* Spacer to push children to bottom */}
       <div className="flex-1" />
+
+      <div className="border-t border-white/5 mt-4">
+         <NavItem 
+            icon={RefreshCw} 
+            label="MODULE_MANAGER" 
+            active={activeModule === 'MODULE_MANAGER'} 
+            onClick={() => setActiveModule('MODULE_MANAGER')} 
+         />
+      </div>
 
       {children}
     </div>
   );
 };
+

@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 interface UpscalerSettingsProps {
   upscale: number;

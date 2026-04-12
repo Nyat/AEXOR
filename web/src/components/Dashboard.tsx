@@ -111,6 +111,21 @@ export const Dashboard = () => {
       }).catch(() => {});
   }, []);
 
+  // Auto-select device based on installed compute deps
+  React.useEffect(() => {
+    const modDeps = installedDeps[activeModule] || [];
+    const hasCpu = modDeps.includes('cpu_engine');
+    const hasGpu = modDeps.includes('gpu_engine');
+    if (hasGpu && hasCpu) {
+      // Both installed → GPU priority, unless user explicitly chose CPU already
+      if (device !== 'cpu') setDevice('cuda');
+    } else if (hasGpu) {
+      setDevice('cuda');
+    } else if (hasCpu) {
+      setDevice('cpu');
+    }
+  }, [installedDeps, activeModule]);
+
   // ── Module Install: Download .py ONLY ──
   const handleInstallModule = (mod: any) => {
     if (!mod || !mod.id) return;
@@ -191,11 +206,8 @@ export const Dashboard = () => {
       if (res?.status === 'SUCCESS') {
         setInstalledDeps(prev => {
           const current = prev[moduleId] || [];
-          // If installing gpu_engine, remove cpu_engine and vice versa (compute swap)
-          let updated = [...current];
-          if (dep.id === 'gpu_engine') updated = updated.filter(d => d !== 'cpu_engine');
-          if (dep.id === 'cpu_engine') updated = updated.filter(d => d !== 'gpu_engine');
-          return { ...prev, [moduleId]: [...updated, dep.id] };
+          if (current.includes(dep.id)) return prev;
+          return { ...prev, [moduleId]: [...current, dep.id] };
         });
         addLog(`DEP_SECURED: ${dep.label} READY`, 'success');
       } else {

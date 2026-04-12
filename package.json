@@ -6,7 +6,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/nihat/Aexor-Hub.git"
+    "url": "https://github.com/Nyat/AEXOR.git"
   },
   "main": "src/main.js",
   "scripts": {

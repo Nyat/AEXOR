@@ -11,6 +11,13 @@ dist_electron/
 *.dmg
 *.AppImage
 
+# Python Artifacts
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
 # Local Settings & Environment
 .env
 .env.local
@@ -38,3 +45,9 @@ Thumbs.db
 knowledge/
 brain/
 *.log
+
+# Test Files
+**/test_*.py
+**/test-*.js
+_test_*.js
+orig_*.txt

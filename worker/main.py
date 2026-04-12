@@ -89,119 +89,131 @@ def load_dynamic_handler(action):
     return None
 
 import urllib.request
+
+def _run_pip_streaming(cmd):
+    """Run a pip command with real-time log streaming. Returns exit code."""
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    for line in iter(process.stdout.readline, ''):
+        stripped = line.strip()
+        if stripped:
+            log_event(stripped, level="progress")
+    process.stdout.close()
+    return process.wait()
+
+
 def handle_ecosystem(action, payload):
     appdata = os.environ.get('APPDATA')
     mod_dir = os.path.join(appdata, 'AEXOR HUB', 'modules') if appdata else ""
-    if not mod_dir: return {"status": "ERROR", "message": "APPDATA env missing"}
+    if not mod_dir:
+        return {"status": "ERROR", "message": "APPDATA env missing"}
     os.makedirs(mod_dir, exist_ok=True)
-    
+
+    # ── INSTALL_MODULE: Download .py file ONLY (no pip) ──
     if action == "INSTALL_MODULE":
         mod_id = payload.get("id")
         url = payload.get("url")
-        reqs = payload.get("requirements", [])
-        token = payload.get("token", "")
-        
         try:
             if url:
                 req = urllib.request.Request(url)
-                if token: req.add_header('Authorization', f'token {token}')
                 with urllib.request.urlopen(req) as response:
                     content = response.read()
                 with open(os.path.join(mod_dir, f"{mod_id}.py"), "wb") as f:
                     f.write(content)
-            
-            if reqs:
-                # DYNAMIC CUDA INJECTION — install torch separately with correct backend
-                torch_pkgs = [r for r in reqs if r in ("torch", "torchvision")]
-                other_pkgs = [r for r in reqs if r not in ("torch", "torchvision")]
-                
-                if torch_pkgs:
-                    has_nvidia = False
-                    try:
-                        smi_check = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        has_nvidia = smi_check.returncode == 0
-                    except Exception:
-                        pass
-                    
-                    if has_nvidia:
-                        log_event("[SYSTEM] NVIDIA GPU detected. Installing CUDA-accelerated Neural Engine...", level="info")
-                        torch_cmd = [sys.executable, "-m", "pip", "install", "--default-timeout=1000",
-                                     "--force-reinstall"] + torch_pkgs + ["--extra-index-url", "https://download.pytorch.org/whl/cu121"]
-                    else:
-                        log_event("[SYSTEM] No NVIDIA GPU. Installing lightweight CPU Neural Engine...", level="info")
-                        torch_cmd = [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + torch_pkgs
-                    
-                    process = subprocess.Popen(torch_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-                    for line in iter(process.stdout.readline, ''):
-                        if line: log_event(line.strip(), level="progress")
-                    process.stdout.close()
-                    rc = process.wait()
-                    if rc != 0:
-                        raise Exception(f"PyTorch installation failed. Exit code {rc}.")
-                
-                if other_pkgs:
-                    log_event(f"[SYSTEM] Establishing remaining dependencies for {mod_id}...", level="info")
-                    process = subprocess.Popen(
-                        [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + other_pkgs,
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
-                    )
-                    for line in iter(process.stdout.readline, ''):
-                        if line: log_event(line.strip(), level="progress")
-                    process.stdout.close()
-                    rc = process.wait()
-                    if rc != 0:
-                        raise Exception(f"Failed to establish {mod_id}. Exit code {rc}.")
-                
-            return {"status": "SUCCESS", "message": f"{mod_id} established"}
+                log_event(f"[SYSTEM] Module script {mod_id}.py downloaded.", level="info")
+            return {"status": "SUCCESS", "message": f"{mod_id} module file established"}
         except Exception as e:
             return {"status": "ERROR", "message": str(e)}
 
-    if action == "CHECK_DEPS":
-        target = set(payload.get("target_reqs", []))
-        other = set(payload.get("all_other_reqs", []))
-        return {"status": "SUCCESS", "isolated": list(target - other)}
-        
+    # ── UNINSTALL_MODULE: Delete .py file ONLY ──
     if action == "UNINSTALL_MODULE":
         mod_id = payload.get("id")
-        isolated = payload.get("isolated_deps", [])
-        
         py_path = os.path.join(mod_dir, f"{mod_id}.py")
         if os.path.exists(py_path):
-            try: os.remove(py_path)
-            except: pass
-            
-        if isolated:
-            log_event(f"[SYSTEM] Cleaning up garbage dependencies: {isolated}", level="info")
             try:
-                process = subprocess.Popen(
-                    [sys.executable, "-m", "pip", "uninstall", "-y"] + isolated,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1
-                )
-                for line in iter(process.stdout.readline, ''):
-                    if line: log_event(line.strip(), level="progress")
-                process.stdout.close()
-                process.wait()
-            except Exception as e:
-                log_event(f"Cleanup error: {e}", level="error")
-                
-        return {"status": "SUCCESS", "message": f"{mod_id} uninstalled"}
+                os.remove(py_path)
+            except Exception:
+                pass
+        log_event(f"[SYSTEM] Module {mod_id} removed from workspace.", level="info")
+        return {"status": "SUCCESS", "message": f"{mod_id} unlinked"}
+
+    # ── INSTALL_DEP: Install a single dependency group ──
+    if action == "INSTALL_DEP":
+        dep_id = payload.get("dep_id", "unknown")
+        packages = payload.get("packages", [])
+        extra_index = payload.get("extra_index", "")
+        force_reinstall = payload.get("force_reinstall", False)
+
+        if not packages:
+            return {"status": "ERROR", "message": "No packages specified"}
+
+        log_event(f"[SYSTEM] Installing dependency: {dep_id}...", level="info")
+        cmd = [sys.executable, "-m", "pip", "install", "--default-timeout=1000"]
+        if force_reinstall:
+            cmd.append("--force-reinstall")
+        cmd += packages
+        if extra_index:
+            cmd += ["--extra-index-url", extra_index]
+
+        try:
+            rc = _run_pip_streaming(cmd)
+            if rc != 0:
+                raise Exception(f"pip exited with code {rc}")
+            log_event(f"[SYSTEM] Dependency {dep_id} established successfully.", level="info")
+            return {"status": "SUCCESS", "message": f"{dep_id} installed"}
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    # ── UNINSTALL_DEP: Remove a single dependency group ──
+    if action == "UNINSTALL_DEP":
+        dep_id = payload.get("dep_id", "unknown")
+        packages = payload.get("packages", [])
+
+        if not packages:
+            return {"status": "ERROR", "message": "No packages specified"}
+
+        log_event(f"[SYSTEM] Removing dependency: {dep_id}...", level="info")
+        cmd = [sys.executable, "-m", "pip", "uninstall", "-y"] + packages
+
+        try:
+            rc = _run_pip_streaming(cmd)
+            log_event(f"[SYSTEM] Dependency {dep_id} removed.", level="info")
+            return {"status": "SUCCESS", "message": f"{dep_id} uninstalled"}
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    # ── CHECK_NVIDIA: Probe for NVIDIA GPU presence ──
+    if action == "CHECK_NVIDIA":
+        try:
+            result = subprocess.run(
+                ["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            has_nvidia = result.returncode == 0
+        except Exception:
+            has_nvidia = False
+        return {"status": "SUCCESS", "has_nvidia": has_nvidia}
 
     return {"status": "ERROR", "message": "Unknown ecosystem command"}
+
 
 def process_command(cmd_data):
     action = cmd_data.get("action")
     payload = cmd_data.get("payload", {})
-    
+
     if action == "PING":
         return {"status": "SUCCESS", "message": "PONG", "version": "V0.18.9-GUARDIAN"}
-    if action in ["INSTALL_MODULE", "UNINSTALL_MODULE", "CHECK_DEPS"]:
+
+    ecosystem_actions = [
+        "INSTALL_MODULE", "UNINSTALL_MODULE",
+        "INSTALL_DEP", "UNINSTALL_DEP",
+        "CHECK_NVIDIA"
+    ]
+    if action in ecosystem_actions:
         res = handle_ecosystem(action, payload)
         res["action"] = action
         return res
-        
+
     try:
         handler = load_dynamic_handler(action)
         if handler:

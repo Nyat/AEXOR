@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "name": "AEXOR_HUB_MODULES",
   "modules": [
     {
@@ -7,60 +7,154 @@
       "name": "AI_UPSCALER",
       "description": "High-fidelity Neural Resolution Expansion. Utilizes ESRGAN architecture for lossless detail extraction and crystal-clear upscaling up to 8K resolution.",
       "version": "v1.4.2",
-      "size": "2.8 GB",
+      "size": "5 KB",
       "icon": "Zap",
-      "requirements": ["torch", "torchvision", "realesrgan", "basicsr"],
-      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AI_UPSCALER.py"
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AI_UPSCALER.py",
+      "deps": [
+        {
+          "id": "cpu_engine",
+          "label": "CPU_ENGINE",
+          "type": "compute",
+          "packages": ["torch", "torchvision"],
+          "size": "~300 MB"
+        },
+        {
+          "id": "gpu_engine",
+          "label": "GPU_ACCEL",
+          "type": "compute",
+          "packages": ["torch", "torchvision"],
+          "extra_index": "https://download.pytorch.org/whl/cu121",
+          "force_reinstall": true,
+          "size": "~2.8 GB",
+          "requires_nvidia": true
+        },
+        {
+          "id": "realesrgan",
+          "label": "ESRGAN",
+          "type": "lib",
+          "packages": ["realesrgan"],
+          "size": "~15 MB"
+        },
+        {
+          "id": "basicsr",
+          "label": "BASICSR",
+          "type": "lib",
+          "packages": ["basicsr"],
+          "size": "~25 MB"
+        }
+      ]
     },
     {
       "id": "BG_REMOVER",
       "name": "BG_REMOVER",
       "description": "AI-Powered Alpha Mask Extraction. Instantly isolates subjects and removes complex backgrounds with pixel-perfect precision.",
       "version": "v2.1.0",
-      "size": "180 MB",
+      "size": "5 KB",
       "icon": "Layers",
-      "requirements": ["rembg", "onnxruntime-directml", "onnxruntime-gpu"],
-      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/BG_REMOVER.py"
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/BG_REMOVER.py",
+      "deps": [
+        {
+          "id": "cpu_engine",
+          "label": "CPU_ENGINE",
+          "type": "compute",
+          "packages": ["onnxruntime"],
+          "size": "~50 MB"
+        },
+        {
+          "id": "gpu_engine",
+          "label": "GPU_ACCEL",
+          "type": "compute",
+          "packages": ["onnxruntime-directml", "onnxruntime-gpu"],
+          "size": "~180 MB",
+          "requires_nvidia": true
+        },
+        {
+          "id": "rembg",
+          "label": "REMBG",
+          "type": "lib",
+          "packages": ["rembg"],
+          "size": "~30 MB"
+        }
+      ]
     },
     {
-       "id": "FORMAT_CONVERTER",
-       "name": "FORMAT_CONVERTER",
-       "description": "Ultra-fast batch media rendering. Seamlessly transcodes assets between WebP, PNG, JPEG, and HEIC formats with zero data loss.",
-       "version": "v3.0.1",
-       "size": "15 MB",
-       "icon": "RefreshCw",
-       "requirements": ["Pillow"],
-       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/FORMAT_CONVERTER.py"
+      "id": "FORMAT_CONVERTER",
+      "name": "FORMAT_CONVERTER",
+      "description": "Ultra-fast batch media rendering. Seamlessly transcodes assets between WebP, PNG, JPEG, and HEIC formats with zero data loss.",
+      "version": "v3.0.1",
+      "size": "5 KB",
+      "icon": "RefreshCw",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/FORMAT_CONVERTER.py",
+      "deps": [
+        {
+          "id": "pillow",
+          "label": "PILLOW",
+          "type": "lib",
+          "packages": ["Pillow"],
+          "size": "~15 MB"
+        }
+      ]
     },
     {
-       "id": "IMAGE_COMPRESSOR",
-       "name": "IMAGE_COMPRESSOR",
-       "description": "Adaptive Storage Optimization. Intelligently reduces file mass while preserving peak visual integrity for web and storage efficiency.",
-       "version": "v1.8.5",
-       "size": "15 MB",
-       "icon": "Shrink",
-       "requirements": ["Pillow"],
-       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/IMAGE_COMPRESSOR.py"
+      "id": "IMAGE_COMPRESSOR",
+      "name": "IMAGE_COMPRESSOR",
+      "description": "Adaptive Storage Optimization. Intelligently reduces file mass while preserving peak visual integrity for web and storage efficiency.",
+      "version": "v1.8.5",
+      "size": "5 KB",
+      "icon": "Shrink",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/IMAGE_COMPRESSOR.py",
+      "deps": [
+        {
+          "id": "pillow",
+          "label": "PILLOW",
+          "type": "lib",
+          "packages": ["Pillow"],
+          "size": "~15 MB"
+        }
+      ]
     },
     {
-       "id": "INSTA_DOWNLOADER",
-       "name": "INSTA_DOWNLOADER",
-       "description": "Neural Social Media Extraction. Direct uplink to retrieve uncompressed, high-quality reels, videos, and carousel assets.",
-       "version": "v2.0.0",
-       "size": "45 MB",
-       "icon": "Instagram",
-       "requirements": ["instaloader", "requests"],
-       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/INSTA_DOWNLOADER.py"
+      "id": "INSTA_DOWNLOADER",
+      "name": "INSTA_DOWNLOADER",
+      "description": "Neural Social Media Extraction. Direct uplink to retrieve uncompressed, high-quality reels, videos, and carousel assets.",
+      "version": "v2.0.0",
+      "size": "5 KB",
+      "icon": "Instagram",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/INSTA_DOWNLOADER.py",
+      "deps": [
+        {
+          "id": "instaloader",
+          "label": "INSTALOADER",
+          "type": "lib",
+          "packages": ["instaloader"],
+          "size": "~20 MB"
+        },
+        {
+          "id": "requests",
+          "label": "REQUESTS",
+          "type": "lib",
+          "packages": ["requests"],
+          "size": "~5 MB"
+        }
+      ]
     },
     {
-       "id": "PHOTO_RESIZER",
-       "name": "PHOTO_RESIZER",
-       "description": "Dynamic Canvas Resampling. Intelligent FIT/FILL bounding boxes and dynamic aspect-ratio adjustments for modern content delivery.",
-       "version": "v2.0.0",
-       "size": "15 MB",
-       "icon": "Scaling",
-       "requirements": ["Pillow"],
-       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PHOTO_RESIZER.py"
+      "id": "PHOTO_RESIZER",
+      "name": "PHOTO_RESIZER",
+      "description": "Dynamic Canvas Resampling. Intelligent FIT/FILL bounding boxes and dynamic aspect-ratio adjustments for modern content delivery.",
+      "version": "v2.0.0",
+      "size": "5 KB",
+      "icon": "Scaling",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PHOTO_RESIZER.py",
+      "deps": [
+        {
+          "id": "pillow",
+          "label": "PILLOW",
+          "type": "lib",
+          "packages": ["Pillow"],
+          "size": "~15 MB"
+        }
+      ]
     }
   ]
 }

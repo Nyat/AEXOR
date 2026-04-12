@@ -25,9 +25,17 @@ export const Dashboard = () => {
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
+  const [installedDeps, setInstalledDeps] = React.useState<Record<string, string[]>>(() => {
+    try {
+      const stored = localStorage.getItem('aexor-hub-deps');
+      return stored ? JSON.parse(stored) : {};
+    } catch { return {}; }
+  });
   const [installQueue, setInstallQueue] = React.useState<string[]>([]);
   const [installProgress, setInstallProgress] = React.useState<number>(0);
   const [installPhase, setInstallPhase] = React.useState<string>('');
+  const [depInstallQueue, setDepInstallQueue] = React.useState<string[]>([]);
+  const [hasNvidia, setHasNvidia] = React.useState(false);
   const [activeModule, setActiveModule] = React.useState(() => installedModules.length > 0 ? installedModules[0] : 'MODULE_MANAGER');
   const [telemetry, setTelemetry] = React.useState({ cpu: 0, ram: 0, ram_mb: 0, gpu: 0, vram_mb: 0, gpu_name: '' });
 
@@ -85,39 +93,49 @@ export const Dashboard = () => {
     };
   }, []);
 
+
   React.useEffect(() => {
     localStorage.setItem('aexor-hub-modules', JSON.stringify(installedModules));
   }, [installedModules]);
 
+  React.useEffect(() => {
+    localStorage.setItem('aexor-hub-deps', JSON.stringify(installedDeps));
+  }, [installedDeps]);
+
+  // Check NVIDIA on startup
+  React.useEffect(() => {
+    // @ts-ignore
+    window.electronAPI?.runTask({ action: 'CHECK_NVIDIA', payload: {} })
+      .then((res: any) => {
+        if (res?.has_nvidia) setHasNvidia(true);
+      }).catch(() => {});
+  }, []);
+
+  // ── Module Install: Download .py ONLY ──
   const handleInstallModule = (mod: any) => {
     if (!mod || !mod.id) return;
     if (installQueue.includes(mod.id) || installedModules.includes(mod.id)) return;
-    
+
     setInstallQueue(prev => [...prev, mod.id]);
-    setInstallPhase('ESTABLISHING_SECURE_CONNECTION...');
-    setInstallProgress(25);
+    setInstallPhase('DOWNLOADING_MODULE_SCRIPT...');
+    setInstallProgress(50);
     addLog(`INITIATING_SECURE_UPLINK: ${mod.id}`, 'info');
 
     // @ts-ignore
     window.electronAPI?.runTask({
        action: 'INSTALL_MODULE',
-       payload: {
-           id: mod.id,
-           url: mod.url,
-           requirements: mod.requirements,
-           token: ''
-       }
+       payload: { id: mod.id, url: mod.url }
     }).then((res: any) => {
        if (res && res.status === 'SUCCESS') {
           setInstallProgress(100);
-          setInstallPhase('FINALIZING_ENVIRONMENT...');
+          setInstallPhase('MODULE_ESTABLISHED');
           setTimeout(() => {
              setInstalledModules(prev => [...prev, mod.id].sort());
              setInstallQueue(prev => prev.filter(id => id !== mod.id));
              setInstallProgress(0);
              setInstallPhase('');
-             addLog(`MODULE_SECURED: ${mod.id} READY FOR EXECUTION`, 'success');
-          }, 800);
+             addLog(`MODULE_SECURED: ${mod.id} — Install dependencies to activate`, 'success');
+          }, 500);
        } else {
           setInstallQueue(prev => prev.filter(id => id !== mod.id));
           addLog(`MODULE_INSTALL_FAILED: ${res?.message}`, 'error');
@@ -132,27 +150,86 @@ export const Dashboard = () => {
     });
   };
 
-  const handleUninstallModule = async (id: string, reqs: string[] = []) => {
+  // ── Module Uninstall: Delete .py ONLY ──
+  const handleUninstallModule = async (id: string) => {
     addLog(`INITIATING_MODULE_PURGE: ${id}`, 'info');
     try {
         // @ts-ignore
-        const checkRes = await window.electronAPI?.runTask({
-            action: 'CHECK_DEPS',
-            payload: { target_reqs: reqs, all_other_reqs: [] } // Basic cleanup bypass
-        });
-        const isolated = checkRes?.isolated || [];
-        
-        // @ts-ignore
         await window.electronAPI?.runTask({
             action: 'UNINSTALL_MODULE',
-            payload: { id, isolated_deps: isolated }
+            payload: { id }
         });
-        
         setInstalledModules(prev => prev.filter(m => m !== id));
+        setInstalledDeps(prev => { const copy = { ...prev }; delete copy[id]; return copy; });
         if (activeModule === id) setActiveModule('MODULE_MANAGER');
         addLog(`MODULE_UNLINKED: ${id} REMOVED FROM WORKSPACE`, 'error');
     } catch (e: any) {
         addLog(`UNINSTALL_FAIL: ${e?.message || e}`, 'error');
+    }
+  };
+
+  // ── Dep Install ──
+  const handleInstallDep = async (moduleId: string, dep: any) => {
+    const queueKey = `${moduleId}::${dep.id}`;
+    if (depInstallQueue.includes(queueKey)) return;
+
+    setDepInstallQueue(prev => [...prev, queueKey]);
+    addLog(`ESTABLISHING_DEP: ${dep.label} for ${moduleId}`, 'info');
+
+    try {
+      // @ts-ignore
+      const res = await window.electronAPI?.runTask({
+        action: 'INSTALL_DEP',
+        payload: {
+          dep_id: dep.id,
+          packages: dep.packages,
+          extra_index: dep.extra_index || '',
+          force_reinstall: dep.force_reinstall || false
+        }
+      });
+
+      if (res?.status === 'SUCCESS') {
+        setInstalledDeps(prev => {
+          const current = prev[moduleId] || [];
+          // If installing gpu_engine, remove cpu_engine and vice versa (compute swap)
+          let updated = [...current];
+          if (dep.id === 'gpu_engine') updated = updated.filter(d => d !== 'cpu_engine');
+          if (dep.id === 'cpu_engine') updated = updated.filter(d => d !== 'gpu_engine');
+          return { ...prev, [moduleId]: [...updated, dep.id] };
+        });
+        addLog(`DEP_SECURED: ${dep.label} READY`, 'success');
+      } else {
+        addLog(`DEP_INSTALL_FAILED: ${res?.message}`, 'error');
+      }
+    } catch (e: any) {
+      addLog(`DEP_IPC_ERROR: ${e?.message || e}`, 'error');
+    } finally {
+      setDepInstallQueue(prev => prev.filter(k => k !== queueKey));
+    }
+  };
+
+  // ── Dep Uninstall ──
+  const handleUninstallDep = async (moduleId: string, dep: any) => {
+    const queueKey = `${moduleId}::${dep.id}`;
+    setDepInstallQueue(prev => [...prev, queueKey]);
+    addLog(`TERMINATING_DEP: ${dep.label} from ${moduleId}`, 'info');
+
+    try {
+      // @ts-ignore
+      await window.electronAPI?.runTask({
+        action: 'UNINSTALL_DEP',
+        payload: { dep_id: dep.id, packages: dep.packages }
+      });
+
+      setInstalledDeps(prev => {
+        const current = prev[moduleId] || [];
+        return { ...prev, [moduleId]: current.filter(d => d !== dep.id) };
+      });
+      addLog(`DEP_REMOVED: ${dep.label}`, 'error');
+    } catch (e: any) {
+      addLog(`DEP_UNINSTALL_FAIL: ${e?.message || e}`, 'error');
+    } finally {
+      setDepInstallQueue(prev => prev.filter(k => k !== queueKey));
     }
   };
 
@@ -543,11 +620,16 @@ export const Dashboard = () => {
             {activeModule === 'MODULE_MANAGER' ? (
                <ModuleManager 
                  installedModules={installedModules}
+                 installedDeps={installedDeps}
                  installQueue={installQueue}
                  installProgress={installProgress}
                  installPhase={installPhase}
+                 depInstallQueue={depInstallQueue}
+                 hasNvidia={hasNvidia}
                  onInstall={handleInstallModule}
                  onUninstall={handleUninstallModule}
+                 onInstallDep={handleInstallDep}
+                 onUninstallDep={handleUninstallDep}
                />
             ) : (
                <main className="flex-1 flex flex-col bg-[radial-gradient(circle_at_top_right,rgba(0,243,255,0.03),transparent_40%)] no-drag overflow-hidden">
@@ -568,10 +650,35 @@ export const Dashboard = () => {
 
               </div>
 
-              <div className="flex items-center gap-2 mb-2 p-1 bg-black/60 border border-white/10 rounded-lg group/hw transition-all shadow-xl">
-                 <button onClick={() => setDevice('cpu')} className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${device === 'cpu' ? 'bg-[#F205FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'}`}>CPU_SEQUENTIAL</button>
-                 <button onClick={() => setDevice('cuda')} className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${device === 'cuda' ? 'bg-[#00F3FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'}`}>GPU_ACCEL</button>
-              </div>
+              {(() => {
+                const modDeps = installedDeps[activeModule] || [];
+                const hasCpu = modDeps.includes('cpu_engine');
+                const hasGpu = modDeps.includes('gpu_engine');
+                const showSwitch = activeModule === 'AI_UPSCALER' || activeModule === 'BG_REMOVER';
+                if (!showSwitch) return null;
+                return (
+                  <div className="flex items-center gap-2 mb-2 p-1 bg-black/60 border border-white/10 rounded-lg group/hw transition-all shadow-xl">
+                     <button
+                       onClick={() => hasCpu && setDevice('cpu')}
+                       disabled={!hasCpu}
+                       className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${
+                         !hasCpu ? 'opacity-30 cursor-not-allowed text-gray-600' :
+                         device === 'cpu' ? 'bg-[#F205FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'
+                       }`}
+                       title={!hasCpu ? 'CPU_ENGINE bağımlılığını Module Manager\'dan kurun' : ''}
+                     >CPU_SEQUENTIAL</button>
+                     <button
+                       onClick={() => hasGpu && setDevice('cuda')}
+                       disabled={!hasGpu}
+                       className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${
+                         !hasGpu ? 'opacity-30 cursor-not-allowed text-gray-600' :
+                         device === 'cuda' ? 'bg-[#00F3FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'
+                       }`}
+                       title={!hasGpu ? 'GPU_ACCEL bağımlılığını Module Manager\'dan kurun' : ''}
+                     >GPU_ACCEL</button>
+                  </div>
+                );
+              })()}
             </div>
 
             {activeModule === 'INSTA_DOWNLOADER' ? (

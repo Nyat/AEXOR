@@ -1,7 +1,5 @@
 # AEXOR HUB // Neural Workstation - V0.18.9-GUARDIAN
 
-![AEXOR_HUB_BANNER](https://raw.githubusercontent.com/placeholder-aexor/aexor-hub/main/assets/banner.png)
-
 > **AEXOR HUB // GUARDIAN** is a high-performance neural workstation designed for professional-grade image processing, media acquisition, and hardware-aware task execution. 
 
 ---
@@ -19,7 +17,7 @@
 
 ## 🛠️ Technical Architecture
 
-- **Frontend**: Electron + React (Vite) + TailwindCSS (Glassmorphism UI).
+- **Frontend**: Electron + React (Vite) + TailwindCSS.
 - **Backend**: Python-based Neural Worker (Torch, PIL, Rembg).
 - **Communication**: Asynchronous IPC Bridge for non-blocking task execution.
 - **Design Aesthetic**: `NIGHT_GLASS` visual profile with high-contrast cyan/fuchsia accent lines.
@@ -36,7 +34,7 @@
 ### Setup
 1. **Clone the Repo**:
    ```bash
-   git clone https://github.com/your-username/Aexor-Hub.git
+   git clone https://github.com/nyat/Aexor-Hub.git
    cd Aexor-Hub
    ```
 2. **Install Node Dependencies**:
@@ -60,5 +58,3 @@
 
 ## 📝 License
 This project is currently **Private** and is purely for personal high-fidelity workstation use. 
-
-*Designed by the AEXOR Systems Engineering Team.*

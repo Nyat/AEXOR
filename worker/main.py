@@ -111,6 +111,18 @@ def handle_ecosystem(action, payload):
                     f.write(content)
             
             if reqs:
+                # DYNAMIC CUDA INJECTION
+                if "torch" in reqs or "torchvision" in reqs:
+                    try:
+                        smi_check = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if smi_check.returncode == 0:
+                            reqs.extend(["--extra-index-url", "https://download.pytorch.org/whl/cu121"])
+                            log_event("[SYSTEM] NVIDIA GPU detected. Elevating to Neural Accelerators (CUDA 12.1)...", level="info")
+                        else:
+                            log_event("[SYSTEM] No NVIDIA Hardware. Utilizing lightweight CPU Neural Engine...", level="info")
+                    except Exception:
+                        log_event("[SYSTEM] NVIDIA Drivers NOT found. Utilizing lightweight CPU Neural Engine...", level="info")
+
                 log_event(f"[SYSTEM] Establishing dependencies for {mod_id}... This might take a while.", level="info")
                 process = subprocess.Popen(
                     [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + reqs,

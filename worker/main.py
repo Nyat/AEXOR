@@ -111,33 +111,46 @@ def handle_ecosystem(action, payload):
                     f.write(content)
             
             if reqs:
-                # DYNAMIC CUDA INJECTION
-                if "torch" in reqs or "torchvision" in reqs:
+                # DYNAMIC CUDA INJECTION — install torch separately with correct backend
+                torch_pkgs = [r for r in reqs if r in ("torch", "torchvision")]
+                other_pkgs = [r for r in reqs if r not in ("torch", "torchvision")]
+                
+                if torch_pkgs:
+                    has_nvidia = False
                     try:
                         smi_check = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        if smi_check.returncode == 0:
-                            reqs.extend(["--extra-index-url", "https://download.pytorch.org/whl/cu121"])
-                            log_event("[SYSTEM] NVIDIA GPU detected. Elevating to Neural Accelerators (CUDA 12.1)...", level="info")
-                        else:
-                            log_event("[SYSTEM] No NVIDIA Hardware. Utilizing lightweight CPU Neural Engine...", level="info")
+                        has_nvidia = smi_check.returncode == 0
                     except Exception:
-                        log_event("[SYSTEM] NVIDIA Drivers NOT found. Utilizing lightweight CPU Neural Engine...", level="info")
-
-                log_event(f"[SYSTEM] Establishing dependencies for {mod_id}... This might take a while.", level="info")
-                process = subprocess.Popen(
-                    [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + reqs,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1
-                )
-                for line in iter(process.stdout.readline, ''):
-                    if line: log_event(line.strip(), level="progress")
+                        pass
                     
-                process.stdout.close()
-                return_code = process.wait()
-                if return_code != 0:
-                    raise Exception(f"Failed to establish {mod_id}. Dependencies rejected by kernel. Exit code {return_code}.")
+                    if has_nvidia:
+                        log_event("[SYSTEM] NVIDIA GPU detected. Installing CUDA-accelerated Neural Engine...", level="info")
+                        torch_cmd = [sys.executable, "-m", "pip", "install", "--default-timeout=1000",
+                                     "--force-reinstall"] + torch_pkgs + ["--extra-index-url", "https://download.pytorch.org/whl/cu121"]
+                    else:
+                        log_event("[SYSTEM] No NVIDIA GPU. Installing lightweight CPU Neural Engine...", level="info")
+                        torch_cmd = [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + torch_pkgs
+                    
+                    process = subprocess.Popen(torch_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+                    for line in iter(process.stdout.readline, ''):
+                        if line: log_event(line.strip(), level="progress")
+                    process.stdout.close()
+                    rc = process.wait()
+                    if rc != 0:
+                        raise Exception(f"PyTorch installation failed. Exit code {rc}.")
+                
+                if other_pkgs:
+                    log_event(f"[SYSTEM] Establishing remaining dependencies for {mod_id}...", level="info")
+                    process = subprocess.Popen(
+                        [sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + other_pkgs,
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+                    )
+                    for line in iter(process.stdout.readline, ''):
+                        if line: log_event(line.strip(), level="progress")
+                    process.stdout.close()
+                    rc = process.wait()
+                    if rc != 0:
+                        raise Exception(f"Failed to establish {mod_id}. Exit code {rc}.")
                 
             return {"status": "SUCCESS", "message": f"{mod_id} established"}
         except Exception as e:

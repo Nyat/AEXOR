@@ -2,6 +2,13 @@ import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+# Register HEIC/HEIF support globally before any PIL usage
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
 # Unified IO Pool for non-blocking disk operations
 IO_POOL = ThreadPoolExecutor(max_workers=4)
 

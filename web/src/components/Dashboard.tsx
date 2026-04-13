@@ -480,7 +480,7 @@ export const Dashboard = () => {
         if ((sourceExt === 'heic' || sourceExt === 'heif') && activeModule !== 'FORMAT_CONVERTER' && activeModule !== 'IMAGE_COMPRESSOR') {
            finalExt = 'webp';
         }
-        if (activeModule === 'PHOTO_RESIZER' || activeModule === 'VIZYON_RESIZER') {
+        if (activeModule === 'PHOTO_RESIZER') {
            finalExt = 'webp';
         }
         
@@ -657,7 +657,6 @@ export const Dashboard = () => {
                   {activeModule === 'IMAGE_COMPRESSOR' && "Lossless/Lossy compression for optimized storage [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'INSTA_DOWNLOADER' && "Extract high-quality media from Instagram links."}
                   {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling (HD to 4K / FIT / FILL)."}
-                  {activeModule === 'VIZYON_RESIZER' && "Personal Git-Ignored workspace for Vizyon standards (1000x1000 bounds)."}
                 </p>
 
               </div>

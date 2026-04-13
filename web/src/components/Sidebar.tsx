@@ -33,8 +33,7 @@ const AVAILABLE_MODULES = [
   { id: 'FORMAT_CONVERTER', label: 'FORMAT_CONVERTER', icon: RefreshCw },
   { id: 'IMAGE_COMPRESSOR', label: 'IMAGE_COMPRESSOR', icon: Shrink },
   { id: 'INSTA_DOWNLOADER', label: 'INSTA_DOWNLOADER', icon: Instagram },
-  { id: 'PHOTO_RESIZER', label: 'PHOTO_RESIZER', icon: Scaling },
-  { id: 'VIZYON_RESIZER', label: 'VIZYON_RESIZER', icon: Scaling }
+  { id: 'PHOTO_RESIZER', label: 'PHOTO_RESIZER', icon: Scaling }
 ];
 
 interface SidebarProps {

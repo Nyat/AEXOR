@@ -82,8 +82,6 @@ def load_dynamic_handler(action):
             from engines.social_engine import handle_insta_downloader; return handle_insta_downloader
         elif action == "PHOTO_RESIZER":
             from engines.image_engine import handle_photo_resizer; return handle_photo_resizer
-        elif action == "VIZYON_RESIZER":
-            from engines.vizyon_engine import handle_vizyon_resizer; return handle_vizyon_resizer
     except Exception as e:
         log_event(f"FALLBACK_LOAD_FAIL [{action}]: {e}", level="error")
     return None

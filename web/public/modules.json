@@ -41,6 +41,13 @@
           "type": "lib",
           "packages": ["basicsr"],
           "size": "~25 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },
@@ -92,6 +99,13 @@
           "type": "lib",
           "packages": ["Pillow"],
           "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },
@@ -110,6 +124,13 @@
           "type": "lib",
           "packages": ["Pillow"],
           "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },

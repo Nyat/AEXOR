@@ -160,7 +160,7 @@ app.whenReady().then(() => {
   ipcMain.handle('select-file', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'png', 'webp', 'jpeg'] }]
+      filters: [{ name: 'Images', extensions: ['jpg', 'png', 'webp', 'jpeg', 'heic', 'heif'] }]
     });
     return result.filePaths; // Return all selected paths
   });

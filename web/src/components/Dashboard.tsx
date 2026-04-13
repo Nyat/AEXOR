@@ -656,7 +656,7 @@ export const Dashboard = () => {
                   {activeModule === 'FORMAT_CONVERTER' && "Lightning fast batch image format conversion [All formats supported]."}
                   {activeModule === 'IMAGE_COMPRESSOR' && "Lossless/Lossy compression for optimized storage [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'INSTA_DOWNLOADER' && "Extract high-quality media from Instagram links."}
-                  {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling (HD to 4K / FIT / FILL)."}
+                  {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling [JPG, PNG, WEBP, HEIC]."}
                 </p>
 
               </div>

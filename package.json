@@ -2,7 +2,7 @@
   "name": "aexor-hub",
   "version": "0.18.9",
   "description": "High-performance Neural Workstation for Professional Image and Media Processing.",
-  "author": "nihat",
+  "author": "Nyat",
   "private": true,
   "repository": {
     "type": "git",
@@ -22,17 +22,22 @@
       "output": "dist"
     },
     "asar": true,
+    "npmRebuild": false,
+    "electronDist": "node_modules/electron/dist",
     "asarUnpack": [
-      "worker/**/*"
+      "worker/**/*",
+      "modules/**/*"
     ],
     "files": [
       "src/**/*",
       "web/dist/**/*",
       "worker/**/*",
+      "modules/**/*",
       "package.json"
     ],
     "win": {
-      "target": "dir"
+      "target": "dir",
+      "icon": "build/icon.ico"
     }
   },
   "keywords": [],

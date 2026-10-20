@@ -102,7 +102,7 @@ const DepButton = ({
         <div className={`absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/90 border rounded text-[8px] font-oxanium whitespace-nowrap opacity-0 group-hover/dep:opacity-100 transition-opacity z-50 max-w-[200px] text-center ${
           isHovered ? 'border-red-500/30 text-red-400' : 'border-[#00FF00]/30 text-[#00FF00]'
         }`}>
-          {isHovered ? 'TERMINATE: İlgili özellikler devre dışı kalır' : 'ACTIVE'}
+          {isHovered ? 'TERMINATE: Dependent features will be disabled' : 'ACTIVE'}
         </div>
       </button>
     );
@@ -117,7 +117,7 @@ const DepButton = ({
       <span className="font-orbitron text-[8px] tracking-[0.15em] uppercase">{dep.label}</span>
       <span className="font-oxanium text-[7px] tracking-wider opacity-60">{dep.size}</span>
       <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/90 border border-[#00F3FF]/30 rounded text-[8px] text-[#00F3FF] font-oxanium whitespace-nowrap opacity-0 group-hover/dep:opacity-100 transition-opacity z-50">
-        UPLINK: Kurmak için tıklayın
+        UPLINK: Click to install
       </div>
     </button>
   );
@@ -133,12 +133,28 @@ export const ModuleManager = ({
   const [availableModules, setAvailableModules] = useState<Module[]>([]);
 
   useEffect(() => {
+    const localMods: Module[] = (fallbackManifest as any).modules || [];
     fetch(`https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/modules.json?t=${Date.now()}`)
       .then(res => res.ok ? res.json() : Promise.reject('GitHub error'))
-      .then(data => setAvailableModules(data.modules))
+      .then(data => {
+        const remoteMods: Module[] = data.modules || [];
+        const map = new Map<string, Module>();
+        remoteMods.forEach(m => map.set(m.id, m));
+        localMods.forEach(m => map.set(m.id, m));
+        const ordered: Module[] = [];
+        const seen = new Set<string>();
+        localMods.forEach(m => {
+          const item = map.get(m.id);
+          if (item) { ordered.push(item); seen.add(m.id); }
+        });
+        remoteMods.forEach(m => {
+          if (!seen.has(m.id)) ordered.push(m);
+        });
+        setAvailableModules(ordered);
+      })
       .catch(() => {
         console.log("GitHub unavailable, falling back to local.");
-        setAvailableModules((fallbackManifest as any).modules);
+        setAvailableModules(localMods);
       });
   }, []);
 
@@ -199,7 +215,7 @@ export const ModuleManager = ({
           const isCurrentInstalling = installQueue[0] === mod.id;
           const Icon = (Icons as any)[mod.icon || 'HelpCircle'] || Icons.HelpCircle;
           const moduleDeps = installedDeps[mod.id] || [];
-          const computeDeps = (mod.deps || []).filter(d => d.type === 'compute');
+          const computeDeps = (mod.deps || []).filter(d => d.type === 'compute' && d.id !== 'cpu_engine');
           const libDeps = (mod.deps || []).filter(d => d.type === 'lib');
 
           return (

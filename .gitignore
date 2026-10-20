@@ -52,5 +52,3 @@ brain/
 _test_*.js
 orig_*.txt
 
-# Personal/Private Modules
-worker/engines/vizyon_engine.py

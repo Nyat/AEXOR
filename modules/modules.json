@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.2.0",
   "name": "AEXOR_HUB_MODULES",
   "modules": [
     {
@@ -12,21 +12,13 @@
       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AI_UPSCALER.py",
       "deps": [
         {
-          "id": "cpu_engine",
-          "label": "CPU_ENGINE",
-          "type": "compute",
-          "packages": ["torch", "torchvision"],
-          "size": "~300 MB"
-        },
-        {
           "id": "gpu_engine",
           "label": "GPU_ACCEL",
           "type": "compute",
           "packages": ["torch", "torchvision"],
-          "extra_index": "https://download.pytorch.org/whl/cu121",
+          "extra_index": "https://download.pytorch.org/whl/cu128",
           "force_reinstall": true,
-          "size": "~2.8 GB",
-          "requires_nvidia": true
+          "size": "~2.8 GB"
         },
         {
           "id": "realesrgan",
@@ -41,6 +33,13 @@
           "type": "lib",
           "packages": ["basicsr"],
           "size": "~25 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },
@@ -54,19 +53,11 @@
       "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/BG_REMOVER.py",
       "deps": [
         {
-          "id": "cpu_engine",
-          "label": "CPU_ENGINE",
-          "type": "compute",
-          "packages": ["onnxruntime"],
-          "size": "~50 MB"
-        },
-        {
           "id": "gpu_engine",
           "label": "GPU_ACCEL",
           "type": "compute",
-          "packages": ["onnxruntime-directml", "onnxruntime-gpu"],
-          "size": "~180 MB",
-          "requires_nvidia": true
+          "packages": ["onnxruntime-gpu"],
+          "size": "~180 MB"
         },
         {
           "id": "rembg",
@@ -74,6 +65,13 @@
           "type": "lib",
           "packages": ["rembg"],
           "size": "~30 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },
@@ -92,6 +90,13 @@
           "type": "lib",
           "packages": ["Pillow"],
           "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
         }
       ]
     },
@@ -110,6 +115,142 @@
           "type": "lib",
           "packages": ["Pillow"],
           "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
+        }
+      ]
+    },
+    {
+      "id": "NEURAL_OCR",
+      "name": "NEURAL_OCR",
+      "description": "Optical Character Recognition Engine. Extracts structured text, code blocks, and tables from images into TXT, Markdown, or JSON.",
+      "version": "v1.0.0",
+      "size": "5 KB",
+      "icon": "ScanText",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/NEURAL_OCR.py",
+      "deps": [
+        {
+          "id": "gpu_engine",
+          "label": "GPU_ACCEL",
+          "type": "compute",
+          "packages": ["onnxruntime-gpu"],
+          "size": "~180 MB"
+        },
+        {
+          "id": "rapidocr",
+          "label": "RAPID_OCR",
+          "type": "lib",
+          "packages": ["rapidocr-onnxruntime", "opencv-python-headless"],
+          "size": "~45 MB"
+        }
+      ]
+    },
+    {
+      "id": "PALETTE_GENERATOR",
+      "name": "PALETTE_GENERATOR",
+      "description": "Chromatic DNA Extraction. Quantizes dominant image colors into high-resolution studio swatch cards, HEX codes, and CSS variables.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Palette",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PALETTE_GENERATOR.py",
+      "deps": [
+        {
+          "id": "pillow",
+          "label": "PILLOW",
+          "type": "lib",
+          "packages": ["Pillow"],
+          "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
+        }
+      ]
+    },
+    {
+      "id": "PDF_FORGE",
+      "name": "PDF_FORGE",
+      "description": "High-Speed Document Matrix. Combines multi-image batches into a single PDF, renders PDF pages to 300-DPI images, or optimizes PDF size.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "FileSpreadsheet",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PDF_FORGE.py",
+      "deps": [
+        {
+          "id": "pymupdf",
+          "label": "PYMUPDF",
+          "type": "lib",
+          "packages": ["pymupdf", "Pillow"],
+          "size": "~35 MB"
+        }
+      ]
+    },
+    {
+      "id": "PHOTO_RESIZER",
+      "name": "PHOTO_RESIZER",
+      "description": "Dynamic Canvas Resampling. Intelligent FIT/FILL bounding boxes and dynamic aspect-ratio adjustments for modern content delivery.",
+      "version": "v2.0.0",
+      "size": "5 KB",
+      "icon": "Scaling",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PHOTO_RESIZER.py",
+      "deps": [
+        {
+          "id": "pillow",
+          "label": "PILLOW",
+          "type": "lib",
+          "packages": ["Pillow"],
+          "size": "~15 MB"
+        },
+        {
+          "id": "pillow_heif",
+          "label": "HEIC_CODEC",
+          "type": "lib",
+          "packages": ["pillow-heif"],
+          "size": "~8 MB"
+        }
+      ]
+    },
+    {
+      "id": "VECTOR_TRACER",
+      "name": "VECTOR_TRACER",
+      "description": "Raster-to-Vector Geometry Synthesizer. Converts logos, icons, and illustrations into infinitely scalable SVG paths.",
+      "version": "v1.0.0",
+      "size": "5 KB",
+      "icon": "Spline",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/VECTOR_TRACER.py",
+      "deps": [
+        {
+          "id": "vtracer",
+          "label": "VTRACER",
+          "type": "lib",
+          "packages": ["vtracer", "Pillow"],
+          "size": "~12 MB"
+        }
+      ]
+    },
+    {
+      "id": "WATERMARK_REMOVER",
+      "name": "WATERMARK_REMOVER",
+      "description": "Spatial Inpainting Reconstruction. Automatically detects and reconstructs overlaid watermarks, timestamps, and corner logos.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Eraser",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/WATERMARK_REMOVER.py",
+      "deps": [
+        {
+          "id": "opencv",
+          "label": "OPENCV_CORE",
+          "type": "lib",
+          "packages": ["opencv-python-headless", "numpy", "Pillow"],
+          "size": "~45 MB"
         }
       ]
     },
@@ -139,20 +280,133 @@
       ]
     },
     {
-      "id": "PHOTO_RESIZER",
-      "name": "PHOTO_RESIZER",
-      "description": "Dynamic Canvas Resampling. Intelligent FIT/FILL bounding boxes and dynamic aspect-ratio adjustments for modern content delivery.",
-      "version": "v2.0.0",
-      "size": "5 KB",
-      "icon": "Scaling",
-      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/PHOTO_RESIZER.py",
+      "id": "MEDIA_DOWNLOADER",
+      "name": "MEDIA_DOWNLOADER",
+      "description": "Universal Stream Harvester. Extracts 4K/1080p video or 320kbps audio from YouTube, X/Twitter, TikTok, SoundCloud, and 1000+ platforms.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Globe",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/MEDIA_DOWNLOADER.py",
       "deps": [
         {
-          "id": "pillow",
-          "label": "PILLOW",
+          "id": "yt_dlp",
+          "label": "YT_DLP",
           "type": "lib",
-          "packages": ["Pillow"],
+          "packages": ["yt-dlp"],
           "size": "~15 MB"
+        },
+        {
+          "id": "ffmpeg",
+          "label": "FFMPEG_CORE",
+          "type": "lib",
+          "packages": ["imageio-ffmpeg"],
+          "size": "~75 MB"
+        }
+      ]
+    },
+    {
+      "id": "VIDEO_OPTIMIZER",
+      "name": "VIDEO_OPTIMIZER",
+      "description": "Precision Video & GIF Forge. H.264 CRF compression, two-pass high-palette GIF synthesis, and animated WebP transcoding.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Film",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/VIDEO_OPTIMIZER.py",
+      "deps": [
+        {
+          "id": "ffmpeg",
+          "label": "FFMPEG_CORE",
+          "type": "lib",
+          "packages": ["imageio-ffmpeg"],
+          "size": "~75 MB"
+        }
+      ]
+    },
+    {
+      "id": "AUDIO_EXTRACTOR",
+      "name": "AUDIO_EXTRACTOR",
+      "description": "Lossless Acoustic Demuxer. Extracts 320kbps MP3, studio PCM WAV, or FLAC audio from video containers, or strips audio tracks.",
+      "version": "v1.0.0",
+      "size": "5 KB",
+      "icon": "Music",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AUDIO_EXTRACTOR.py",
+      "deps": [
+        {
+          "id": "ffmpeg",
+          "label": "FFMPEG_CORE",
+          "type": "lib",
+          "packages": ["imageio-ffmpeg"],
+          "size": "~75 MB"
+        }
+      ]
+    },
+    {
+      "id": "AUDIO_SEPARATOR",
+      "name": "AUDIO_SEPARATOR",
+      "description": "Hybrid Transformer Stem Isolation & Vocal Remover. Splits tracks into isolated Vocals, Instrumental/Karaoke, Drums, and Bass.",
+      "version": "v1.0.0",
+      "size": "7 KB",
+      "icon": "Sliders",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AUDIO_SEPARATOR.py",
+      "deps": [
+        {
+          "id": "gpu_engine",
+          "label": "GPU_ACCEL",
+          "type": "compute",
+          "packages": ["torch", "torchaudio"],
+          "extra_index": "https://download.pytorch.org/whl/cu128",
+          "force_reinstall": true,
+          "size": "~2.8 GB"
+        },
+        {
+          "id": "demucs",
+          "label": "DEMUCS_AI",
+          "type": "lib",
+          "packages": ["demucs", "soundfile", "imageio-ffmpeg"],
+          "size": "~95 MB"
+        }
+      ]
+    },
+    {
+      "id": "AUTO_SUBTITLER",
+      "name": "AUTO_SUBTITLER",
+      "description": "Neural Speech-to-Subtitle Transcriber. Generates frame-accurate .SRT captions and clean transcripts using CTranslate2 Whisper.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Subtitles",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/AUTO_SUBTITLER.py",
+      "deps": [
+        {
+          "id": "gpu_engine",
+          "label": "GPU_ACCEL",
+          "type": "compute",
+          "packages": ["ctranslate2", "nvidia-cublas-cu12", "nvidia-cudnn-cu12"],
+          "size": "~690 MB"
+        },
+        {
+          "id": "whisper",
+          "label": "FASTER_WHISPER",
+          "type": "lib",
+          "packages": ["faster-whisper", "imageio-ffmpeg"],
+          "size": "~90 MB"
+        }
+      ]
+    },
+    {
+      "id": "VOICE_CLEANER",
+      "name": "VOICE_CLEANER",
+      "description": "Spectral Acoustic Denoiser & Studio EQ. Eliminates background hiss, hum, and room noise while boosting vocal presence.",
+      "version": "v1.0.0",
+      "size": "6 KB",
+      "icon": "Mic",
+      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/VOICE_CLEANER.py",
+      "deps": [
+        {
+          "id": "dsp_core",
+          "label": "SPECTRAL_DSP",
+          "type": "lib",
+          "packages": ["noisereduce", "scipy", "soundfile", "imageio-ffmpeg"],
+          "size": "~120 MB"
         }
       ]
     }

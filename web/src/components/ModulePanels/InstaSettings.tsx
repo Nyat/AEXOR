@@ -1,4 +1,4 @@
-
+import { Info } from 'lucide-react';
 
 interface InstaSettingsProps {
   instaUrl: string;
@@ -22,8 +22,23 @@ export const InstaSettings = ({ instaUrl, setInstaUrl, instaSessionId, setInstaS
       </div>
       
       <div className="flex flex-col gap-2">
-        <div className="font-anta text-[10px] tracking-[0.3em] uppercase opacity-50 flex items-center gap-2">
-          NEURAL_SESSION_KEY <span className="text-[#00F3FF]/30 text-[8px]">(COOKIE_SESSIONID)</span>
+        <div className="font-anta text-[10px] tracking-[0.3em] uppercase flex items-center gap-2">
+          <span className="opacity-50">NEURAL_SESSION_KEY</span>
+          <span className="text-[#00F3FF]/40 text-[8px]">(COOKIE_SESSIONID)</span>
+          <div className="relative group/info inline-flex items-center">
+            <Info size={12} className="text-[#00F3FF]/50 hover:text-[#00F3FF] transition-colors cursor-pointer" />
+            <div className="absolute left-5 bottom-full mb-1.5 w-72 p-3 bg-black/95 border border-[#00F3FF]/30 rounded-lg shadow-[0_0_20px_rgba(0,243,255,0.15)] opacity-0 pointer-events-none group-hover/info:opacity-100 transition-opacity duration-200 z-50 font-oxanium tracking-wide normal-case">
+              <div className="font-orbitron text-[9px] text-[#00F3FF] tracking-[0.15em] uppercase mb-1.5 border-b border-white/10 pb-1">
+                HOW TO GET SESSIONID
+              </div>
+              <ol className="text-[10px] text-gray-300 space-y-1 list-decimal list-inside leading-relaxed">
+                <li>Log in to <span className="text-white">instagram.com</span> on your browser.</li>
+                <li>Press <span className="text-[#00F3FF]">F12</span> (DevTools) &rarr; <span className="text-white">Application</span> tab.</li>
+                <li>Open <span className="text-white">Cookies</span> &rarr; <span className="text-white">https://www.instagram.com</span>.</li>
+                <li>Find <span className="text-[#00F3FF] font-mono">sessionid</span> and copy its <span className="text-white">Value</span>.</li>
+              </ol>
+            </div>
+          </div>
         </div>
         <div className="relative group/session">
           <input

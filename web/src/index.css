@@ -26,7 +26,6 @@ body {
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
-  -webkit-app-region: drag;
 }
 
 .glass-card {
@@ -40,19 +39,33 @@ body {
   -webkit-app-region: no-drag;
 }
 
+head, title, style, script, link, meta {
+  display: none !important;
+}
+
+* {
+  cursor: none !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 243, 255, 0.2); }
+
 @keyframes scan {
   0% { transform: translateY(-100%); }
   100% { transform: translateY(500%); }
 }
 
 @keyframes neural-sweep {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 @keyframes glow-pulse {
-  0%, 100% { opacity: 0.6; box-shadow: 0 0 5px rgba(0, 243, 255, 0.2); }
-  50% { opacity: 1; box-shadow: 0 0 20px rgba(0, 243, 255, 0.5); }
+  0% { filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.2)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 15px rgba(0, 243, 255, 0.5)); transform: scale(1.05); }
+  100% { filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.2)); transform: scale(1); }
 }
 
 @keyframes fade-in {
@@ -60,18 +73,24 @@ body {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes scanline-roll {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
 .animate-scan {
   animation: scan 3s linear infinite;
 }
 
 .animate-neural-sweep {
-  background: linear-gradient(90deg, rgba(255,255,255,0.2) 25%, #fff 50%, rgba(255,255,255,0.2) 75%);
-  background-size: 200% auto;
-  animation: neural-sweep 3s linear infinite;
+  background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.4), transparent);
+  background-size: 200% 100%;
+  animation: neural-sweep 10s infinite linear;
+  opacity: 0.6;
 }
 
 .animate-glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
+  animation: glow-pulse 3s infinite ease-in-out;
 }
 
 .animate-fade-in {
@@ -79,15 +98,13 @@ body {
 }
 
 .neural-grid {
-  background-image: radial-gradient(circle at 1px 1px, rgba(0, 243, 255, 0.05) 1px, transparent 0);
+  background-image: linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
 .scanline-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, transparent 50%, rgba(0, 243, 255, 0.02) 50%);
-  background-size: 100% 4px;
-  pointer-events: none;
-  z-index: 10;
+  position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+  background: rgba(0, 243, 255, 0.05); box-shadow: 0 0 10px rgba(0, 243, 255, 0.1);
+  animation: scanline-roll 8s infinite linear; pointer-events: none; z-index: 5;
 }
+

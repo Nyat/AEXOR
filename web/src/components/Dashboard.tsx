@@ -15,7 +15,18 @@ import { CompressorSettings } from './ModulePanels/CompressorSettings';
 import { ConverterSettings } from './ModulePanels/ConverterSettings';
 import { InstaSettings } from './ModulePanels/InstaSettings';
 import { ResizerSettings } from './ModulePanels/ResizerSettings';
+import { ExtendedModuleSettings, MediaDownloaderView } from './ModulePanels/ExtendedModuleSettings';
 import { ModuleManager } from './ModuleManager';
+import fallbackManifest from '../../public/modules.json';
+
+const getDepSignature = (dep: any): string => {
+  const pkgs = Array.isArray(dep?.packages) ? [...dep.packages].map((p: string) => p.toLowerCase()).sort().join(',') : '';
+  return `${dep?.type || 'lib'}::${dep?.id || ''}::${pkgs}`;
+};
+
+const getAllCatalogModules = (): any[] => {
+  return ((fallbackManifest as any)?.modules || []) as any[];
+};
 
 export const Dashboard = () => {
 
@@ -41,7 +52,7 @@ export const Dashboard = () => {
 
   const [selectedFiles, setSelectedFiles] = React.useState<string[]>([]);
   const [targetDir, setTargetDir] = React.useState(() => {
-    return localStorage.getItem('aexor-hub-target-dir') || 'E:/AntiGravity/Aexor-Hub/output';
+    return localStorage.getItem('aexor-hub-target-dir') || './output';
   });
   const [isDragging, setIsDragging] = React.useState(false);
   const [logs, setLogs] = React.useState<{ text: string, type: 'info' | 'success' | 'error' | 'progress' }[]>([]);
@@ -52,21 +63,51 @@ export const Dashboard = () => {
   const [processIndex, setProcessIndex] = useState(0);
   const [batchProgress, setBatchProgress] = useState<Record<string, number>>({});
   const [_filePreviews, setFilePreviews] = React.useState<{[key: string]: string}>({});
-  const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
-  const [isHovering, setIsHovering] = React.useState(false);
+  const cursorRef = React.useRef<HTMLDivElement>(null);
   const [device, setDevice] = React.useState<'cuda' | 'cpu'>(() => {
     return (localStorage.getItem('aexor-hub-device') as 'cuda' | 'cpu') || 'cuda';
   });
   const [settings, setSettings] = React.useState<any>({
     quality: 80,
     format: 'WEBP',
-    upscale: 2,
+    upscale: Number(localStorage.getItem('aexor-hub-upscale')) || 2,
     instaUrl: '',
     instaSessionId: localStorage.getItem('aexor-hub-insta-session') || '',
     resizerResolution: 'HD',
     resizerMode: 'FIT',
-    resizerBg: 'BLACK'
+    resizerBg: 'BLACK',
+    ocrFormat: 'TXT',
+    wmRegion: 'AUTO_DETECT',
+    wmAlgorithm: 'TELEA',
+    paletteCount: 5,
+    paletteMode: 'STUDIO_CARD',
+    vectorColor: 'COLOR',
+    vectorPreset: 'POSTER',
+    pdfMode: 'IMAGES_TO_PDF',
+    pdfDpi: 300,
+    mediaUrl: '',
+    mediaMode: 'VIDEO_MP4',
+    mediaQuality: 'BEST',
+    videoMode: 'COMPRESS_MP4',
+    videoRes: 'ORIGINAL',
+    videoFps: 15,
+    audioExtMode: 'MP3_320K',
+    stemMode: 'VOCALS_INSTRUMENTAL',
+    whisperModel: 'base',
+    subLang: 'AUTO',
+    subFormat: 'SRT',
+    denoiseStrength: 'STUDIO',
+    voiceBoost: true,
+    voiceOutFormat: 'WAV'
   });
+  const settingsRef = React.useRef<any>(settings);
+  const updateSettings = (patch: Record<string, any>) => {
+    setSettings((prev: any) => {
+      const next = { ...prev, ...patch };
+      settingsRef.current = next;
+      return next;
+    });
+  };
 
   const [dotCount, setDotCount] = React.useState(1);
 
@@ -76,17 +117,21 @@ export const Dashboard = () => {
     }, 600);
 
     const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
       const target = e.target as HTMLElement;
-      const isClickable = window.getComputedStyle(target).cursor === 'pointer' ||
-                         target.tagName === 'BUTTON' ||
-                         target.tagName === 'A' ||
-                         target.closest('button') ||
-                         target.closest('.cursor-pointer');
-      setIsHovering(!!isClickable);
+      const isClickable = !!(target && (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest?.('button') ||
+        target.closest?.('.cursor-pointer')
+      ));
+      if (cursorRef.current) {
+        cursorRef.current.style.left = `${e.clientX}px`;
+        cursorRef.current.style.top = `${e.clientY}px`;
+        cursorRef.current.style.transform = `translate(-50%, -50%) scale(${isClickable ? 1.15 : 1})`;
+      }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => {
       clearInterval(interval);
       window.removeEventListener('mousemove', handleMouseMove);
@@ -102,29 +147,49 @@ export const Dashboard = () => {
     localStorage.setItem('aexor-hub-deps', JSON.stringify(installedDeps));
   }, [installedDeps]);
 
-  // Check NVIDIA on startup
+  // Check GPU on startup and force GPU mode
   React.useEffect(() => {
+    setDevice('cuda');
     // @ts-ignore
     window.electronAPI?.runTask({ action: 'CHECK_NVIDIA', payload: {} })
       .then((res: any) => {
-        if (res?.has_nvidia) setHasNvidia(true);
+        if (res?.has_nvidia || res?.gpu_vendor) setHasNvidia(true);
       }).catch(() => {});
   }, []);
 
-  // Auto-select device based on installed compute deps
+  // Propagate identical shared dependencies across all modules automatically
   React.useEffect(() => {
-    const modDeps = installedDeps[activeModule] || [];
-    const hasCpu = modDeps.includes('cpu_engine');
-    const hasGpu = modDeps.includes('gpu_engine');
-    if (hasGpu && hasCpu) {
-      // Both installed → GPU priority, unless user explicitly chose CPU already
-      if (device !== 'cpu') setDevice('cuda');
-    } else if (hasGpu) {
-      setDevice('cuda');
-    } else if (hasCpu) {
-      setDevice('cpu');
+    const allMods = getAllCatalogModules();
+    const activeSignatures = new Set<string>();
+    allMods.forEach((m: any) => {
+      const activeIds = installedDeps[m.id] || [];
+      (m.deps || []).forEach((d: any) => {
+        if (activeIds.includes(d.id)) {
+          activeSignatures.add(getDepSignature(d));
+        }
+      });
+    });
+    if (activeSignatures.size === 0) return;
+
+    let changed = false;
+    const nextDeps: Record<string, string[]> = { ...installedDeps };
+    allMods.forEach((m: any) => {
+      const current = nextDeps[m.id] ? [...nextDeps[m.id]] : [];
+      (m.deps || []).forEach((d: any) => {
+        if (activeSignatures.has(getDepSignature(d)) && !current.includes(d.id)) {
+          current.push(d.id);
+          changed = true;
+        }
+      });
+      if (current.length > 0) {
+        nextDeps[m.id] = current;
+      }
+    });
+
+    if (changed) {
+      setInstalledDeps(nextDeps);
     }
-  }, [installedDeps, activeModule]);
+  }, [installedDeps, installedModules]);
 
   // ── Module Install: Download .py ONLY ──
   const handleInstallModule = (mod: any) => {
@@ -146,6 +211,23 @@ export const Dashboard = () => {
           setInstallPhase('MODULE_ESTABLISHED');
           setTimeout(() => {
              setInstalledModules(prev => [...prev, mod.id].sort());
+             // Automatically activate any dependency on this newly installed module that is already active in another module
+             setInstalledDeps(prev => {
+               const allMods = getAllCatalogModules();
+               const activeSignatures = new Set<string>();
+               allMods.forEach((m: any) => {
+                 const ids = prev[m.id] || [];
+                 (m.deps || []).forEach((d: any) => {
+                   if (ids.includes(d.id)) activeSignatures.add(getDepSignature(d));
+                 });
+               });
+               const matched = (mod.deps || [])
+                 .filter((d: any) => activeSignatures.has(getDepSignature(d)))
+                 .map((d: any) => d.id);
+               if (matched.length === 0) return prev;
+               const existing = prev[mod.id] || [];
+               return { ...prev, [mod.id]: Array.from(new Set([...existing, ...matched])) };
+             });
              setInstallQueue(prev => prev.filter(id => id !== mod.id));
              setInstallProgress(0);
              setInstallPhase('');
@@ -165,7 +247,7 @@ export const Dashboard = () => {
     });
   };
 
-  // ── Module Uninstall: Delete .py ONLY ──
+  // ── Module Uninstall: Delete .py ONLY (Preserve shared deps in other modules) ──
   const handleUninstallModule = async (id: string) => {
     addLog(`INITIATING_MODULE_PURGE: ${id}`, 'info');
     try {
@@ -175,7 +257,6 @@ export const Dashboard = () => {
             payload: { id }
         });
         setInstalledModules(prev => prev.filter(m => m !== id));
-        setInstalledDeps(prev => { const copy = { ...prev }; delete copy[id]; return copy; });
         if (activeModule === id) setActiveModule('MODULE_MANAGER');
         addLog(`MODULE_UNLINKED: ${id} REMOVED FROM WORKSPACE`, 'error');
     } catch (e: any) {
@@ -183,12 +264,19 @@ export const Dashboard = () => {
     }
   };
 
-  // ── Dep Install ──
+  // ── Dep Install (Synchronizes across all modules sharing the exact same dependency) ──
   const handleInstallDep = async (moduleId: string, dep: any) => {
+    const targetSig = getDepSignature(dep);
+    const allMods = getAllCatalogModules();
+    const matchingKeys = allMods.flatMap((m: any) =>
+      (m.deps || [])
+        .filter((d: any) => getDepSignature(d) === targetSig)
+        .map((d: any) => `${m.id}::${d.id}`)
+    );
     const queueKey = `${moduleId}::${dep.id}`;
     if (depInstallQueue.includes(queueKey)) return;
 
-    setDepInstallQueue(prev => [...prev, queueKey]);
+    setDepInstallQueue(prev => Array.from(new Set([...prev, ...matchingKeys, queueKey])));
     addLog(`ESTABLISHING_DEP: ${dep.label} for ${moduleId}`, 'info');
 
     try {
@@ -205,26 +293,46 @@ export const Dashboard = () => {
 
       if (res?.status === 'SUCCESS') {
         setInstalledDeps(prev => {
-          const current = prev[moduleId] || [];
-          if (current.includes(dep.id)) return prev;
-          return { ...prev, [moduleId]: [...current, dep.id] };
+          const next = { ...prev };
+          allMods.forEach((m: any) => {
+            (m.deps || []).forEach((d: any) => {
+              if (getDepSignature(d) === targetSig) {
+                const curr = next[m.id] || [];
+                if (!curr.includes(d.id)) {
+                  next[m.id] = [...curr, d.id];
+                }
+              }
+            });
+          });
+          const current = next[moduleId] || [];
+          if (!current.includes(dep.id)) {
+            next[moduleId] = [...current, dep.id];
+          }
+          return next;
         });
-        addLog(`DEP_SECURED: ${dep.label} READY`, 'success');
+        addLog(`DEP_SECURED: ${dep.label} SYNCHRONIZED ACROSS LINKED MODULES`, 'success');
       } else {
         addLog(`DEP_INSTALL_FAILED: ${res?.message}`, 'error');
       }
     } catch (e: any) {
       addLog(`DEP_IPC_ERROR: ${e?.message || e}`, 'error');
     } finally {
-      setDepInstallQueue(prev => prev.filter(k => k !== queueKey));
+      setDepInstallQueue(prev => prev.filter(k => !matchingKeys.includes(k) && k !== queueKey));
     }
   };
 
-  // ── Dep Uninstall ──
+  // ── Dep Uninstall (Removes across all modules sharing the exact same dependency) ──
   const handleUninstallDep = async (moduleId: string, dep: any) => {
+    const targetSig = getDepSignature(dep);
+    const allMods = getAllCatalogModules();
+    const matchingKeys = allMods.flatMap((m: any) =>
+      (m.deps || [])
+        .filter((d: any) => getDepSignature(d) === targetSig)
+        .map((d: any) => `${m.id}::${d.id}`)
+    );
     const queueKey = `${moduleId}::${dep.id}`;
-    setDepInstallQueue(prev => [...prev, queueKey]);
-    addLog(`TERMINATING_DEP: ${dep.label} from ${moduleId}`, 'info');
+    setDepInstallQueue(prev => Array.from(new Set([...prev, ...matchingKeys, queueKey])));
+    addLog(`TERMINATING_DEP: ${dep.label} from workspace`, 'info');
 
     try {
       // @ts-ignore
@@ -234,14 +342,26 @@ export const Dashboard = () => {
       });
 
       setInstalledDeps(prev => {
-        const current = prev[moduleId] || [];
-        return { ...prev, [moduleId]: current.filter(d => d !== dep.id) };
+        const next = { ...prev };
+        allMods.forEach((m: any) => {
+          if (!next[m.id]) return;
+          const idsToRemove = (m.deps || [])
+            .filter((d: any) => getDepSignature(d) === targetSig)
+            .map((d: any) => d.id);
+          if (idsToRemove.length > 0) {
+            next[m.id] = next[m.id].filter(id => !idsToRemove.includes(id));
+          }
+        });
+        if (next[moduleId]) {
+          next[moduleId] = next[moduleId].filter(d => d !== dep.id);
+        }
+        return next;
       });
-      addLog(`DEP_REMOVED: ${dep.label}`, 'error');
+      addLog(`DEP_REMOVED: ${dep.label} UNLINKED FROM ALL SHARED MODULES`, 'error');
     } catch (e: any) {
       addLog(`DEP_UNINSTALL_FAIL: ${e?.message || e}`, 'error');
     } finally {
-      setDepInstallQueue(prev => prev.filter(k => k !== queueKey));
+      setDepInstallQueue(prev => prev.filter(k => !matchingKeys.includes(k) && k !== queueKey));
     }
   };
 
@@ -300,6 +420,9 @@ export const Dashboard = () => {
 
   const getEstimatedPeakTFLOPS = (name: string) => {
     const gpu = name.toUpperCase() || '';
+    if (gpu.includes('5090')) return 419.0;
+    if (gpu.includes('5080')) return 225.0;
+    if (gpu.includes('5070')) return 140.0;
     if (gpu.includes('4090')) return 330.8;
     if (gpu.includes('4080')) return 197.8;
     if (gpu.includes('4070')) return 116.6;
@@ -444,9 +567,15 @@ export const Dashboard = () => {
   };
 
   const runActiveTask = async () => {
+    const currentSettings = settingsRef.current || settings;
     const isInsta = activeModule === 'INSTA_DOWNLOADER';
-    if (selectedFiles.length === 0 && !isInsta) return;
-    if (isInsta && !settings.instaUrl) return;
+    const isMediaDl = activeModule === 'MEDIA_DOWNLOADER';
+    const isUrlMode = isInsta || isMediaDl;
+    const isPdfCombine = activeModule === 'PDF_FORGE' && currentSettings.pdfMode === 'IMAGES_TO_PDF';
+
+    if (selectedFiles.length === 0 && !isUrlMode) return;
+    if (isInsta && !currentSettings.instaUrl) return;
+    if (isMediaDl && !currentSettings.mediaUrl) return;
 
     try {
       setIsTaskRunning(true);
@@ -455,33 +584,59 @@ export const Dashboard = () => {
       setVisibleProgress(0); 
       addLog(`INITIATING_${activeModule}_BATCH_SEQUENCE...`, 'progress');
 
-      const filesToProcess = isInsta ? [null] : selectedFiles;
+      const filesToProcess = isUrlMode ? [null] : (isPdfCombine ? [selectedFiles[0]] : selectedFiles);
       let completedCount = 0;
 
       for (let i = 0; i < filesToProcess.length; i++) {
         const file = filesToProcess[i];
         setProcessIndex(i);
-        if (!file && !isInsta) continue;
+        if (!file && !isUrlMode) continue;
 
-        const fileName = file?.split(/[\\/]/).pop() || (isInsta ? 'media' : 'unknown');
+        const fileName = file?.split(/[\\/]/).pop() || (isUrlMode ? 'stream_media' : 'unknown');
         const nameParts = fileName.split('.');
         const ext = (nameParts.length > 1 ? nameParts.pop() : 'png') || 'png';
         const baseName = nameParts.join('.');
 
         let suffix = '';
-        if (activeModule === 'AI_UPSCALER') suffix = `-x${settings.upscale}`;
+        if (activeModule === 'AI_UPSCALER') suffix = `-x${currentSettings.upscale}`;
         else if (activeModule === 'BG_REMOVER') suffix = '-nonBG';
         else if (activeModule === 'IMAGE_COMPRESSOR') suffix = '-compressed';
         else if (activeModule === 'PHOTO_RESIZER') suffix = '-resized';
         else if (activeModule === 'FORMAT_CONVERTER') suffix = '-converted';
+        else if (activeModule === 'NEURAL_OCR') suffix = '-ocr';
+        else if (activeModule === 'WATERMARK_REMOVER') suffix = '-clean';
+        else if (activeModule === 'PALETTE_GENERATOR') suffix = '-palette';
+        else if (activeModule === 'VECTOR_TRACER') suffix = '-vector';
+        else if (activeModule === 'PDF_FORGE') suffix = currentSettings.pdfMode === 'COMPRESS_PDF' ? '-optimized' : '-forged';
+        else if (activeModule === 'VIDEO_OPTIMIZER') suffix = currentSettings.videoMode === 'GIF_FORGE' ? '-gif' : (currentSettings.videoMode === 'ANIMATED_WEBP' ? '-anim' : '-opt');
+        else if (activeModule === 'AUDIO_EXTRACTOR') suffix = currentSettings.audioExtMode === 'MUTE_VIDEO' ? '-muted' : '-audio';
+        else if (activeModule === 'AUTO_SUBTITLER') suffix = '-subtitles';
+        else if (activeModule === 'VOICE_CLEANER') suffix = '-cleaned';
 
-        let finalExt = activeModule === 'FORMAT_CONVERTER' ? settings.format.toLowerCase() : ext;
+        let finalExt = activeModule === 'FORMAT_CONVERTER' ? currentSettings.format.toLowerCase() : ext;
         const sourceExt = ext.toLowerCase();
         if ((sourceExt === 'heic' || sourceExt === 'heif') && activeModule !== 'FORMAT_CONVERTER' && activeModule !== 'IMAGE_COMPRESSOR') {
            finalExt = 'webp';
         }
-        if (activeModule === 'PHOTO_RESIZER') {
-           finalExt = 'webp';
+        if (activeModule === 'PHOTO_RESIZER') finalExt = 'webp';
+        else if (activeModule === 'NEURAL_OCR') finalExt = (currentSettings.ocrFormat || 'TXT').toLowerCase();
+        else if (activeModule === 'PALETTE_GENERATOR') finalExt = 'png';
+        else if (activeModule === 'VECTOR_TRACER') finalExt = 'svg';
+        else if (activeModule === 'PDF_FORGE') finalExt = currentSettings.pdfMode === 'PDF_TO_IMAGES' ? 'png' : 'pdf';
+        else if (activeModule === 'VIDEO_OPTIMIZER') {
+           if (currentSettings.videoMode === 'GIF_FORGE') finalExt = 'gif';
+           else if (currentSettings.videoMode === 'ANIMATED_WEBP') finalExt = 'webp';
+           else finalExt = 'mp4';
+        }
+        else if (activeModule === 'AUDIO_EXTRACTOR') {
+           if (currentSettings.audioExtMode === 'MP3_320K') finalExt = 'mp3';
+           else if (currentSettings.audioExtMode === 'WAV_PCM') finalExt = 'wav';
+           else if (currentSettings.audioExtMode === 'FLAC_LOSSLESS') finalExt = 'flac';
+        }
+        else if (activeModule === 'AUTO_SUBTITLER') finalExt = currentSettings.subFormat === 'TXT' ? 'txt' : 'srt';
+        else if (activeModule === 'VOICE_CLEANER') {
+           if (currentSettings.voiceOutFormat === 'MP3') finalExt = 'mp3';
+           else if (currentSettings.voiceOutFormat === 'WAV') finalExt = 'wav';
         }
         
         const outputName = `${baseName}${suffix}.${finalExt}`;
@@ -489,30 +644,53 @@ export const Dashboard = () => {
         const outputPath = `${targetDir}/${outputName}`;
 
         setProcessLabel(fileName);
-        addLog(`PROCESSING [${completedCount + 1}/${filesToProcess.length}]: ${fileName}`, 'info');
+        addLog(`PROCESSING [${completedCount + 1}/${filesToProcess.length}]: ${fileName}${activeModule === 'AI_UPSCALER' ? ` [${currentSettings.upscale}X]` : ''}`, 'info');
 
         let rW = 1280; let rH = 720;
-        if (settings.resizerResolution === 'FHD') { rW = 1920; rH = 1080; }
-        if (settings.resizerResolution === 'QHD') { rW = 2560; rH = 1440; }
-        if (settings.resizerResolution === '4K') { rW = 3840; rH = 2160; }
+        if (currentSettings.resizerResolution === 'FHD') { rW = 1920; rH = 1080; }
+        if (currentSettings.resizerResolution === 'QHD') { rW = 2560; rH = 1440; }
+        if (currentSettings.resizerResolution === '4K') { rW = 3840; rH = 2160; }
 
         // @ts-ignore
         const res: any = await window.electronAPI?.runTask({
           action: activeModule,
           payload: {
             input_path: file,
+            input_paths: selectedFiles,
             output_path: outputPath,
-            url: settings.instaUrl,
-            quality: settings.quality,
-            format: settings.format,
-            upscale: settings.upscale,
+            url: isMediaDl ? currentSettings.mediaUrl : currentSettings.instaUrl,
+            quality: currentSettings.quality,
+            format: currentSettings.format,
+            upscale: currentSettings.upscale,
             device: device,
             output_dir: targetDir,
-            session_id: settings.instaSessionId,
+            session_id: currentSettings.instaSessionId,
             width: rW,
             height: rH,
-            resize_mode: settings.resizerMode,
-            bg_color: settings.resizerBg
+            resize_mode: currentSettings.resizerMode,
+            bg_color: currentSettings.resizerBg,
+            ocr_format: currentSettings.ocrFormat,
+            region: currentSettings.wmRegion,
+            algorithm: currentSettings.wmAlgorithm,
+            color_count: currentSettings.paletteCount,
+            export_mode: currentSettings.paletteMode,
+            color_mode: currentSettings.vectorColor,
+            preset: currentSettings.vectorPreset,
+            pdf_mode: currentSettings.pdfMode,
+            dpi: currentSettings.pdfDpi,
+            media_mode: currentSettings.mediaMode,
+            media_quality: currentSettings.mediaQuality,
+            video_mode: currentSettings.videoMode,
+            resolution: currentSettings.videoRes,
+            fps: currentSettings.videoFps,
+            audio_mode: currentSettings.audioExtMode,
+            stem_mode: currentSettings.stemMode,
+            model_size: currentSettings.whisperModel,
+            language: currentSettings.subLang,
+            sub_format: currentSettings.subFormat,
+            strength: currentSettings.denoiseStrength,
+            voice_boost: currentSettings.voiceBoost,
+            out_format: currentSettings.voiceOutFormat
           }
         });
 
@@ -534,6 +712,31 @@ export const Dashboard = () => {
       setIsTaskRunning(false);
       setProgress(0);
       setSelectedFiles([]);
+      setFilePreviews({});
+    }
+  };
+
+  const [isPurging, setIsPurging] = useState(false);
+
+  const handlePurgeMemory = async () => {
+    if (isTaskRunning || isPurging) return;
+    setIsPurging(true);
+    addLog('INITIATING_MEMORY_PURGE: Releasing Aexor VRAM & RAM buffers...', 'info');
+    try {
+      if (selectedFiles.length === 0) {
+        setFilePreviews({});
+      }
+      // @ts-ignore
+      const res: any = await window.electronAPI?.runTask({ action: 'PURGE_MEMORY', payload: {} });
+      if (res?.status === 'SUCCESS') {
+        addLog(res.message || 'NEURAL_MEMORY_PURGED: Aexor VRAM & RAM buffers released.', 'success');
+      } else {
+        addLog(`MEMORY_PURGE_ERROR: ${res?.message || 'Unknown error'}`, 'error');
+      }
+    } catch (e: any) {
+      addLog(`MEMORY_PURGE_ERROR: ${e?.message || e}`, 'error');
+    } finally {
+      setTimeout(() => setIsPurging(false), 400);
     }
   };
 
@@ -548,47 +751,11 @@ export const Dashboard = () => {
 
   return (
     <div className="flex-1 flex flex-col h-screen bg-[#0A0A0B] overflow-hidden text-white font-oxanium">
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 243, 255, 0.2); }
-        @keyframes glow-pulse {
-          0% { filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.2)); transform: scale(1); }
-          50% { filter: drop-shadow(0 0 15px rgba(0, 243, 255, 0.5)); transform: scale(1.05); }
-          100% { filter: drop-shadow(0 0 5px rgba(0, 243, 255, 0.2)); transform: scale(1); }
-        }
-        .animate-glow-pulse { animation: glow-pulse 3s infinite ease-in-out; }
-        @keyframes neural-sweep {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-        .animate-neural-sweep {
-          background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.4), transparent);
-          background-size: 200% 100%;
-          animation: neural-sweep 10s infinite linear;
-          opacity: 0.6;
-        }
-        @keyframes scanline-roll {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(100%); }
-        }
-        .scanline-overlay {
-          position: absolute; top: 0; left: 0; width: 100%; height: 2px;
-          background: rgba(0, 243, 255, 0.05); box-shadow: 0 0 10px rgba(0, 243, 255, 0.1);
-          animation: scanline-roll 8s infinite linear; pointer-events: none; z-index: 5;
-        }
-        .neural-grid {
-          background-image: linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
-          background-size: 20px 20px;
-        }
-        * { cursor: none !important; }
-      `}</style>
-
       {/* Custom Cursor */}
       <div
+        ref={cursorRef}
         className="fixed w-3.5 h-3.5 z-[9999] pointer-events-none flex items-center justify-center mix-blend-difference transition-transform duration-100 ease-out"
-        style={{ left: mousePos.x, top: mousePos.y, transform: `translate(-50%, -50%) scale(${isHovering ? 1.15 : 1})` }}
+        style={{ left: 0, top: 0, transform: 'translate(-50%, -50%) scale(1)' }}
       >
         <div className="absolute w-[1.5px] h-full bg-white"></div>
         <div className="absolute h-[1.5px] w-full bg-white"></div>
@@ -624,7 +791,12 @@ export const Dashboard = () => {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeModule={activeModule} setActiveModule={setActiveModule} installedModules={installedModules}>
-          <TelemetryView telemetry={telemetry} />
+          <TelemetryView
+            telemetry={telemetry}
+            onPurgeMemory={handlePurgeMemory}
+            isPurging={isPurging}
+            disabled={isTaskRunning || installQueue.length > 0 || depInstallQueue.length > 0}
+          />
         </Sidebar>
 
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
@@ -657,43 +829,40 @@ export const Dashboard = () => {
                   {activeModule === 'IMAGE_COMPRESSOR' && "Lossless/Lossy compression for optimized storage [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'INSTA_DOWNLOADER' && "Extract high-quality media from Instagram links."}
                   {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling [JPG, PNG, WEBP, HEIC]."}
+                  {activeModule === 'NEURAL_OCR' && "Optical character recognition [JPG, PNG, WEBP]. Exports structured TXT, Markdown, or JSON."}
+                  {activeModule === 'WATERMARK_REMOVER' && "Spatial inpainting reconstruction [JPG, PNG, WEBP]. Removes corner/center overlays."}
+                  {activeModule === 'PALETTE_GENERATOR' && "Chromatic DNA extraction [JPG, PNG, WEBP, HEIC]. Generates swatch cards & CSS variables."}
+                  {activeModule === 'VECTOR_TRACER' && "Raster-to-vector path synthesis [JPG, PNG, WEBP]. Outputs scalable SVG geometry."}
+                  {activeModule === 'PDF_FORGE' && "Document matrix engine [PDF, JPG, PNG, WEBP]. Combine images to PDF, render pages, or compress."}
+                  {activeModule === 'MEDIA_DOWNLOADER' && "Universal stream harvester [YouTube, X, TikTok, SoundCloud]. Downloads MP4, MP3, or WAV."}
+                  {activeModule === 'VIDEO_OPTIMIZER' && "Video & GIF Forge [MP4, MOV, MKV, WEBM]. H.264 compression, 2-pass GIF & Animated WebP."}
+                  {activeModule === 'AUDIO_EXTRACTOR' && "Acoustic stream demuxer [MP4, MOV, MKV, WEBM]. Extracts 320kbps MP3, WAV, FLAC, or mutes video."}
+                  {activeModule === 'AUDIO_SEPARATOR' && "Hybrid Transformer stem isolation & Vocal Remover [MP3, WAV, FLAC, MP4]. Powered by Demucs."}
+                  {activeModule === 'AUTO_SUBTITLER' && "Neural speech-to-subtitle transcriber [MP4, MKV, MP3, WAV]. Outputs frame-accurate SRT/TXT."}
+                  {activeModule === 'VOICE_CLEANER' && "Spectral acoustic denoiser & studio EQ [WAV, MP3, MP4, MKV]. Eliminates background noise."}
                 </p>
 
               </div>
 
-              {(() => {
-                const modDeps = installedDeps[activeModule] || [];
-                const hasCpu = modDeps.includes('cpu_engine');
-                const hasGpu = modDeps.includes('gpu_engine');
-                const showSwitch = activeModule === 'AI_UPSCALER' || activeModule === 'BG_REMOVER';
-                if (!showSwitch) return null;
-                return (
-                  <div className="flex items-center gap-2 mb-2 p-1 bg-black/60 border border-white/10 rounded-lg group/hw transition-all shadow-xl">
-                     <button
-                       onClick={() => hasCpu && setDevice('cpu')}
-                       disabled={!hasCpu}
-                       className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${
-                         !hasCpu ? 'opacity-30 cursor-not-allowed text-gray-600' :
-                         device === 'cpu' ? 'bg-[#F205FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'
-                       }`}
-                       title={!hasCpu ? 'CPU_ENGINE bağımlılığını Module Manager\'dan kurun' : ''}
-                     >CPU_SEQUENTIAL</button>
-                     <button
-                       onClick={() => hasGpu && setDevice('cuda')}
-                       disabled={!hasGpu}
-                       className={`px-4 py-1.5 font-orbitron text-[9px] tracking-[0.2em] rounded-md transition-all ${
-                         !hasGpu ? 'opacity-30 cursor-not-allowed text-gray-600' :
-                         device === 'cuda' ? 'bg-[#00F3FF] text-black font-bold' : 'text-white/60 hover:text-white hover:bg-white/5 border border-white/5'
-                       }`}
-                       title={!hasGpu ? 'GPU_ACCEL bağımlılığını Module Manager\'dan kurun' : ''}
-                     >GPU_ACCEL</button>
-                  </div>
-                );
-              })()}
+              <div className="flex items-center gap-3 px-4 py-2 mb-1 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 hover:border-[#00F3FF]/40 transition-all shadow-lg shrink-0" onClick={handleSelectDir} title="Click to change output target directory">
+                <HardDrive size={14} className="text-[#00F3FF] shrink-0" />
+                <span className="text-[10px] font-oxanium text-gray-400 uppercase tracking-widest leading-none truncate max-w-[320px]">
+                  TARGET_DIRECTORY: <span className="text-white lowercase">{targetDir}</span>
+                </span>
+              </div>
             </div>
 
             {activeModule === 'INSTA_DOWNLOADER' ? (
-                <InstaSettings instaUrl={settings.instaUrl} setInstaUrl={(val) => setSettings({...settings, instaUrl: val})} instaSessionId={settings.instaSessionId} setInstaSessionId={(val) => { setSettings({...settings, instaSessionId: val}); localStorage.setItem('aexor-hub-insta-session', val); }} />
+                <InstaSettings instaUrl={settings.instaUrl} setInstaUrl={(val) => updateSettings({ instaUrl: val })} instaSessionId={settings.instaSessionId} setInstaSessionId={(val) => { updateSettings({ instaSessionId: val }); localStorage.setItem('aexor-hub-insta-session', val); }} />
+            ) : activeModule === 'MEDIA_DOWNLOADER' ? (
+                <MediaDownloaderView
+                  mediaUrl={settings.mediaUrl}
+                  setMediaUrl={(val) => updateSettings({ mediaUrl: val })}
+                  mediaMode={settings.mediaMode}
+                  setMediaMode={(val) => updateSettings({ mediaMode: val })}
+                  mediaQuality={settings.mediaQuality}
+                  setMediaQuality={(val) => updateSettings({ mediaQuality: val })}
+                />
             ) : (
               <div 
                 className={`flex-1 border-2 border-dashed flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden group mb-4 ${isDragging ? 'border-[#00F3FF] bg-[#00F3FF]/5' : 'border-white/5 hover:border-white/10'} ${isTaskRunning ? 'pointer-events-none' : 'cursor-pointer'}`}
@@ -721,7 +890,7 @@ export const Dashboard = () => {
                               </div>
                               <div className="flex flex-col items-center">
                                  <span className="font-oxanium text-[8px] text-gray-500 uppercase tracking-widest mb-1">HARDWARE_UPLINK</span>
-                                 <span className="px-3 py-1 bg-white/5 border border-white/10 font-anta text-[9px] tracking-widest text-[#F205FF] uppercase">{device === 'cuda' ? 'GPU_ACCEL' : 'CPU_SEQUENTIAL'}</span>
+                                 <span className="px-3 py-1 bg-white/5 border border-white/10 font-anta text-[9px] tracking-widest text-[#F205FF] uppercase">GPU_ACCEL</span>
                               </div>
                            </div>
 
@@ -766,7 +935,10 @@ export const Dashboard = () => {
                                    {_filePreviews[path] ? (
                                       <img src={_filePreviews[path]} className="w-full h-full object-cover opacity-60 group-hover/item:opacity-100 transition-opacity" alt="" />
                                    ) : (
-                                      <div className="text-white/10"><Scaling size={20} /></div>
+                                      <div className="flex flex-col items-center justify-center p-2 text-center">
+                                        <Scaling size={18} className="text-[#00F3FF]/40 mb-1" />
+                                        <span className="font-mono text-[8px] text-gray-400 truncate max-w-[90px]">{path.split(/[\\/]/).pop()}</span>
+                                      </div>
                                    )}
                                    <div className="absolute bottom-1 right-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                       <div className="bg-[#FF0055] p-1 rounded-md cursor-pointer hover:bg-red-600" onClick={(e) => {
@@ -788,27 +960,22 @@ export const Dashboard = () => {
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-2 mb-6">
-              <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/5 rounded cursor-pointer hover:bg-white/10 transition-colors" onClick={handleSelectDir}>
-                  <HardDrive size={14} className="text-[#00F3FF]" />
-                  <span className="text-[10px] font-oxanium text-gray-500 uppercase tracking-widest leading-none">TARGET_DIRECTORY: <span className="text-white lowercase">{targetDir}</span></span>
+            <div className="flex items-center justify-between gap-4 mt-2 mb-6">
+               <div className="flex items-center gap-4 flex-wrap min-w-0">
+                   {activeModule === 'AI_UPSCALER' && <UpscalerSettings upscale={settings.upscale} setUpscale={(val) => { updateSettings({ upscale: val }); localStorage.setItem('aexor-hub-upscale', String(val)); addLog(`SCALE_FACTOR_SET: ${val}X`, 'info'); }} />}
+                   {activeModule === 'FORMAT_CONVERTER' && <ConverterSettings format={settings.format} setFormat={(val) => updateSettings({ format: val })} />}
+                   {activeModule === 'IMAGE_COMPRESSOR' && <CompressorSettings quality={settings.quality} setQuality={(val) => updateSettings({ quality: val })} />}
+                   {activeModule === 'PHOTO_RESIZER' && <ResizerSettings 
+                      resolutionLabel={settings.resizerResolution} setResolutionLabel={(v) => updateSettings({ resizerResolution: v })}
+                      resizeMode={settings.resizerMode} setResizeMode={(v) => updateSettings({ resizerMode: v })}
+                      bgColor={settings.resizerBg} setBgColor={(v) => updateSettings({ resizerBg: v })}
+                   />}
+                   <ExtendedModuleSettings activeModule={activeModule} settings={settings} updateSettings={updateSettings} />
                </div>
-               <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-4">
-                      {activeModule === 'AI_UPSCALER' && <UpscalerSettings upscale={settings.upscale} setUpscale={(val) => setSettings({...settings, upscale: val})} />}
-                      {activeModule === 'FORMAT_CONVERTER' && <ConverterSettings format={settings.format} setFormat={(val) => setSettings({...settings, format: val})} />}
-                      {activeModule === 'IMAGE_COMPRESSOR' && <CompressorSettings quality={settings.quality} setQuality={(val) => setSettings({...settings, quality: val})} />}
-                      {activeModule === 'PHOTO_RESIZER' && <ResizerSettings 
-                         resolutionLabel={settings.resizerResolution} setResolutionLabel={(v) => setSettings({...settings, resizerResolution: v})}
-                         resizeMode={settings.resizerMode} setResizeMode={(v) => setSettings({...settings, resizerMode: v})}
-                         bgColor={settings.resizerBg} setBgColor={(v) => setSettings({...settings, resizerBg: v})}
-                      />}
-                  </div>
 
-                  <button disabled={isTaskRunning} onClick={runActiveTask} className={`px-8 py-3 font-orbitron text-xs tracking-[0.3em] transition-all rounded shadow-[0_0_20px_rgba(0,243,255,0.2)] active:scale-95 border-none outline-none cursor-pointer ${isTaskRunning ? 'bg-gray-700 text-gray-400 cursor-not-allowed shadow-none' : 'bg-[#00F3FF] text-black hover:bg-[#00F3FF]/80'}`}>
-                    {isTaskRunning ? 'RUNNING...' : 'INITIATE'}
-                  </button>
-               </div>
+               <button disabled={isTaskRunning} onClick={runActiveTask} className={`px-8 py-3 font-orbitron text-xs tracking-[0.3em] transition-all rounded shadow-[0_0_20px_rgba(0,243,255,0.2)] active:scale-95 border-none outline-none cursor-pointer shrink-0 ${isTaskRunning ? 'bg-gray-700 text-gray-400 cursor-not-allowed shadow-none' : 'bg-[#00F3FF] text-black hover:bg-[#00F3FF]/80'}`}>
+                 {isTaskRunning ? 'RUNNING...' : 'INITIATE'}
+               </button>
             </div>
             <div className="h-[200px] w-full flex-shrink-0"></div>
             </div>

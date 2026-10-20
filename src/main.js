@@ -40,10 +40,96 @@ async function processQueue() {
   }
 }
 
+let lastValidPosition = null;
+let savePositionTimer = null;
+
+function getWindowStatePath() {
+  const fs = require('fs');
+  const appDataStr = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + '/.local/share');
+  const aexorDir = path.join(appDataStr, 'AEXOR HUB');
+  if (!fs.existsSync(aexorDir)) {
+    fs.mkdirSync(aexorDir, { recursive: true });
+  }
+  return path.join(aexorDir, 'window-state.json');
+}
+
+function isValidWindowPosition(x, y, width = 1200, height = 800) {
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
+  }
+  if (x <= -10000 || y <= -10000) {
+    return false;
+  }
+  try {
+    const { screen } = require('electron');
+    const displays = screen.getAllDisplays();
+    return displays.some((d) => {
+      const wa = d.workArea;
+      const overlapX = Math.min(x + width, wa.x + wa.width) - Math.max(x, wa.x);
+      const titleBarVisible = y >= wa.y - 10 && y + 40 <= wa.y + wa.height;
+      return overlapX >= 120 && titleBarVisible;
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
+function loadWindowPosition(width = 1200, height = 800) {
+  try {
+    const fs = require('fs');
+    const statePath = getWindowStatePath();
+    if (!fs.existsSync(statePath)) return null;
+    const raw = fs.readFileSync(statePath, 'utf-8');
+    const data = JSON.parse(raw);
+    if (data && isValidWindowPosition(data.x, data.y, width, height)) {
+      const pos = { x: Math.round(data.x), y: Math.round(data.y) };
+      lastValidPosition = pos;
+      return pos;
+    }
+  } catch (e) {}
+  return null;
+}
+
+function flushWindowPosition(win) {
+  try {
+    if (savePositionTimer) {
+      clearTimeout(savePositionTimer);
+      savePositionTimer = null;
+    }
+    if (win && !win.isDestroyed() && !win.isMinimized() && !win.isMaximized()) {
+      const [curX, curY] = win.getPosition();
+      if (isValidWindowPosition(curX, curY)) {
+        lastValidPosition = { x: Math.round(curX), y: Math.round(curY) };
+      }
+    }
+    if (lastValidPosition && isValidWindowPosition(lastValidPosition.x, lastValidPosition.y)) {
+      const fs = require('fs');
+      fs.writeFileSync(getWindowStatePath(), JSON.stringify(lastValidPosition), 'utf-8');
+    }
+  } catch (e) {}
+}
+
+function scheduleSaveWindowPosition(win) {
+  if (win && !win.isDestroyed() && !win.isMinimized() && !win.isMaximized()) {
+    const [curX, curY] = win.getPosition();
+    if (isValidWindowPosition(curX, curY)) {
+      lastValidPosition = { x: Math.round(curX), y: Math.round(curY) };
+    }
+  }
+  if (savePositionTimer) clearTimeout(savePositionTimer);
+  savePositionTimer = setTimeout(() => {
+    flushWindowPosition(win);
+  }, 400);
+}
+
 function createWindow() {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+  const WIN_WIDTH = 1200;
+  const WIN_HEIGHT = 800;
+  const savedPos = loadWindowPosition(WIN_WIDTH, WIN_HEIGHT);
+
+  const winOptions = {
+    width: WIN_WIDTH,
+    height: WIN_HEIGHT,
     frame: false,
     transparent: true,
     webPreferences: {
@@ -51,7 +137,24 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-  });
+  };
+
+  if (savedPos) {
+    winOptions.x = savedPos.x;
+    winOptions.y = savedPos.y;
+  }
+
+  const win = new BrowserWindow(winOptions);
+
+  if (!lastValidPosition && !win.isMinimized()) {
+    const [initX, initY] = win.getPosition();
+    if (isValidWindowPosition(initX, initY, WIN_WIDTH, WIN_HEIGHT)) {
+      lastValidPosition = { x: Math.round(initX), y: Math.round(initY) };
+    }
+  }
+
+  win.on('moved', () => scheduleSaveWindowPosition(win));
+  win.on('close', () => flushWindowPosition(win));
 
   if (isDev) {
     win.loadURL('http://localhost:3000');
@@ -60,7 +163,7 @@ function createWindow() {
   }
 }
 
-function startPythonWorker() {
+function startPythonWorker(isPurgeRestart = false) {
   const fs = require('fs');
   const appDataStr = process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + "/.local/share");
   const aexorDir = path.join(appDataStr, 'AEXOR HUB');
@@ -96,6 +199,9 @@ function startPythonWorker() {
         const json = JSON.parse(line);
         const w = win();
         if (json.type === 'telemetry' || json.type === 'log') {
+          if (isPurgeRestart && json.type === 'log' && (json.text.includes('NEURAL_WORKER_ONLINE') || json.text.includes('HEIC_KERNEL_LOADED'))) {
+            return;
+          }
           if (w) w.webContents.send('telemetry-data', json);
         } else if (currentPendingTask && (json.action === currentPendingTask.args.action || json.status)) {
           if (currentPendingTask.internalResolve) {
@@ -110,11 +216,15 @@ function startPythonWorker() {
     });
 
     pythonProcess = proc;
-    sendLog(`[NEURAL_WORKER]: ATTACHED_TO_STREAM (Isolated Venv)`, 'info');
+    if (!isPurgeRestart) {
+      sendLog(`[NEURAL_WORKER]: ATTACHED_TO_STREAM (Isolated Venv)`, 'info');
+    }
   }
 
   function runTargetPython() {
-      sendLog(`[MAIN]: INITIATING_NEURAL_UPLINK: ${workerPath}`, 'info');
+      if (!isPurgeRestart) {
+        sendLog(`[MAIN]: INITIATING_NEURAL_UPLINK: ${workerPath}`, 'info');
+      }
       const proc = spawn(venvPython, ['-u', workerPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
@@ -160,7 +270,11 @@ app.whenReady().then(() => {
   ipcMain.handle('select-file', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Images', extensions: ['jpg', 'png', 'webp', 'jpeg', 'heic', 'heif'] }]
+      filters: [
+        { name: 'All Supported Assets', extensions: ['jpg', 'png', 'webp', 'jpeg', 'heic', 'heif', 'bmp', 'tiff', 'pdf', 'mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac'] },
+        { name: 'Images & Documents', extensions: ['jpg', 'png', 'webp', 'jpeg', 'heic', 'heif', 'bmp', 'tiff', 'pdf'] },
+        { name: 'Video & Audio', extensions: ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac'] }
+      ]
     });
     return result.filePaths; // Return all selected paths
   });
@@ -173,6 +287,30 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('run-task', async (event, args) => {
+    if (args && args.action === 'PURGE_MEMORY') {
+      if (isProcessing || taskQueue.length > 0) {
+        return { status: 'ERROR', message: 'Cannot purge memory while a task is active.' };
+      }
+      try {
+        if (pythonProcess) {
+          const oldProc = pythonProcess;
+          pythonProcess = null;
+          oldProc.removeAllListeners();
+          if (oldProc.stdout) oldProc.stdout.removeAllListeners();
+          if (oldProc.stderr) oldProc.stderr.removeAllListeners();
+          oldProc.kill();
+        }
+        startPythonWorker(true);
+        const w = BrowserWindow.getAllWindows()[0];
+        if (w && w.webContents) {
+          w.webContents.session.clearCache().catch(() => {});
+        }
+        return { status: 'SUCCESS', message: 'NEURAL_MEMORY_PURGED: Aexor VRAM & RAM buffers released.' };
+      } catch (e) {
+        return { status: 'ERROR', message: `MEMORY_PURGE_FAILED: ${e.message}` };
+      }
+    }
+
     return new Promise((resolve, reject) => {
       if (!pythonProcess) return reject('Worker not running');
       taskQueue.push({ args, resolve, reject });
@@ -244,6 +382,7 @@ app.whenReady().then(() => {
     if (win) {
       const { x: cursorX, y: cursorY } = screen.getCursorScreenPoint();
       win.setPosition(cursorX - x, cursorY - y);
+      scheduleSaveWindowPosition(win);
     }
   });
 

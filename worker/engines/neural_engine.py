@@ -1,17 +1,15 @@
 import os
+import sys
+import warnings
 import torch
 import numpy as np
 from PIL import Image
 from utils import log_event, IO_POOL
 
-import warnings
-from PIL import Image
-
 # Suppress PIL Warnings for very large files
 warnings.simplefilter('ignore', Image.DecompressionBombWarning)
 
 # Monkey-patch torchvision to suppress deprecated functional_tensor warning
-import sys
 try:
     import torchvision.transforms.functional
     sys.modules['torchvision.transforms.functional_tensor'] = torchvision.transforms.functional
@@ -22,30 +20,13 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 
 # Global State for Neural Engines
-
 UPSCALERS = {}
 BG_SESSIONS = {}
 
 def get_weights_dir():
     appdata = os.environ.get('APPDATA')
-    possible_paths = []
-    if appdata:
-        possible_paths.append(os.path.join(appdata, 'AEXOR HUB', 'weights'))
-        possible_paths.append(os.path.join(appdata, 'N-Tools', 'weights'))
-    
-    home = os.path.expanduser('~')
-    possible_paths.append(os.path.join(home, '.aexor-hub', 'weights'))
-    possible_paths.append(os.path.join(home, '.n-tools', 'weights'))
-    
-    for p in possible_paths:
-        if os.path.exists(p): return p
-        
-    weights_dir = possible_paths[0] if appdata else possible_paths[2]
-    if not os.path.exists(weights_dir):
-        try: os.makedirs(weights_dir)
-        except:
-            weights_dir = os.path.join(os.path.dirname(__file__), 'weights')
-            if not os.path.exists(weights_dir): os.makedirs(weights_dir)
+    weights_dir = os.path.join(appdata, 'AEXOR HUB', 'weights') if appdata else os.path.join(os.path.expanduser('~'), '.aexor-hub', 'weights')
+    os.makedirs(weights_dir, exist_ok=True)
     return weights_dir
 
 def get_upscaler(device_name='cuda'):
@@ -64,8 +45,10 @@ def get_upscaler(device_name='cuda'):
             model_path = os.path.join(weights_dir, 'RealESRGAN_x4plus.pth')
             
             if not os.path.exists(model_path):
-                log_event(f"ASSET_ERROR: Weights not found at {model_path}", level="error")
-                return None
+                log_event(f"ASSET_ERROR: Weights not found at {model_path}. Downloading...", level="info")
+                import urllib.request
+                urllib.request.urlretrieve("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", model_path)
+                log_event("Weight download complete.", level="info")
 
             model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
             half_precision = True if (device_name == 'cuda' and "+cpu" not in torch.__version__) else False
@@ -81,7 +64,6 @@ def get_upscaler(device_name='cuda'):
 
 def get_bg_session(model_name="birefnet-general", device_name='cuda'):
     global BG_SESSIONS
-    # Isolate cache by device to allow hot-swapping
     cache_key = f"{model_name}_{device_name}"
     if cache_key not in BG_SESSIONS:
         from rembg import new_session
@@ -107,31 +89,52 @@ def handle_upscaler(payload):
     output_path = payload.get("output_path")
     scale = int(payload.get("upscale", 2))
     device_name = payload.get("device", "cuda")
+    if device_name == 'cuda' and not torch.cuda.is_available():
+        log_event("HARDWARE_ERROR: CUDA not available. Forcing CPU.", level="error")
+        device_name = 'cpu'
     
     log_event("[PROGRESS: 5]", path=input_path)
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     img = Image.open(input_path).convert("RGB")
+    orig_w, orig_h = img.size
     if device_name == 'cuda': torch.cuda.empty_cache()
     
     upscaler = get_upscaler(device_name)
     if not upscaler: 
-         return {"status": "ERROR", "message": f"Upscaler initialization failed."}
+         return {"status": "ERROR", "message": "Upscaler initialization failed."}
     
+    MAX_SIDE = 16380
+    effective_scale = float(scale)
+    if max(orig_w, orig_h) * effective_scale > MAX_SIDE:
+        effective_scale = MAX_SIDE / float(max(orig_w, orig_h))
+        log_event(
+            f"RESOLUTION_GUARD: Requested {scale}X ({orig_w * scale}x{orig_h * scale}) exceeds 16K limit; capping to {int(orig_w * effective_scale)}x{int(orig_h * effective_scale)} for memory stability.",
+            level="info"
+        )
+
     log_event("[PROGRESS: 30]", path=input_path)
-    if device_name == 'cuda':
-        with torch.amp.autocast('cuda'):
-            output, _ = upscaler.enhance(np.array(img), outscale=scale)
-    else:
-        output, _ = upscaler.enhance(np.array(img), outscale=scale)
+    output, _ = upscaler.enhance(np.array(img), outscale=effective_scale)
     
     log_event("[PROGRESS: 90]", path=input_path)
-    
-    def save_to_disk(arr, path):
-        try: Image.fromarray(arr).save(path, quality=100, subsampling=0)
-        except Exception as e: log_event(f"DISK_ERROR: {e}", level="error", path=input_path)
+    out_h, out_w = output.shape[:2]
+    try:
+        out_img = Image.fromarray(output)
+        ext = os.path.splitext(output_path)[1].lower()
+        if ext in ('.jpg', '.jpeg'):
+            out_img.save(output_path, format='JPEG', quality=98, subsampling=0)
+        elif ext == '.webp':
+            out_img.save(output_path, format='WEBP', quality=98)
+        else:
+            out_img.save(output_path)
+    except Exception as e:
+        log_event(f"DISK_ERROR: {e}", level="error", path=input_path)
+        return {"status": "ERROR", "message": f"DISK_WRITE_FAILURE: {e}"}
 
-    IO_POOL.submit(save_to_disk, output, output_path)
     log_event("[PROGRESS: 100]", path=input_path)
-    return {"status": "SUCCESS", "message": f"NEURAL_UPSCAL_COMPLETE"}
+    return {
+        "status": "SUCCESS",
+        "message": f"NEURAL_UPSCALE_COMPLETE [{scale}X]: {orig_w}x{orig_h} -> {out_w}x{out_h}"
+    }
 
 def handle_bg_remover(payload):
     from rembg import remove
@@ -140,6 +143,7 @@ def handle_bg_remover(payload):
     device_name = payload.get("device", "cuda")
     
     log_event("[PROGRESS: 5]", path=input_path)
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     input_img = Image.open(input_path).convert("RGBA")
     session = get_bg_session("birefnet-general", device_name=device_name)
     

@@ -25,9 +25,9 @@ def handle(payload):
 
         input_path = payload.get("input_path")
         output_path = payload.get("output_path")
-        strength = str(payload.get("voice_strength", "STUDIO")).upper()
+        strength = str(payload.get("voice_strength") or payload.get("strength") or "STUDIO").upper()
         voice_boost = bool(payload.get("voice_boost", True))
-        out_mode = str(payload.get("voice_output", "WAV")).upper()
+        out_mode = str(payload.get("voice_output") or payload.get("out_format") or "WAV").upper()
 
         if not input_path or not output_path:
             return {"status": "ERROR", "message": "Missing input or output path."}

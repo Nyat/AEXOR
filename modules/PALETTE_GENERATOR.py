@@ -15,8 +15,8 @@ def handle(payload):
     try:
         input_path = payload.get("input_path")
         output_path = payload.get("output_path")
-        swatch_count = int(payload.get("palette_count", 6))
-        mode = str(payload.get("palette_mode", "STUDIO_CARD")).upper()
+        swatch_count = int(payload.get("palette_count") or payload.get("color_count") or 5)
+        mode = str(payload.get("palette_mode") or payload.get("export_mode") or "STUDIO_CARD").upper()
 
         if not input_path or not output_path:
             return {"status": "ERROR", "message": "Missing input or output path."}

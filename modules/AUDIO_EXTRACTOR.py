@@ -19,7 +19,7 @@ def handle(payload):
     try:
         input_path = payload.get("input_path")
         output_path = payload.get("output_path")
-        audio_mode = str(payload.get("audio_extract_mode", "MP3_320K")).upper()
+        audio_mode = str(payload.get("audio_extract_mode") or payload.get("audio_mode") or "MP3_320K").upper()
 
         if not input_path or not output_path:
             return {"status": "ERROR", "message": "Missing input or output path."}

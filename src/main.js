@@ -212,7 +212,11 @@ function startPythonWorker(isPurgeRestart = false) {
     });
 
     proc.stderr.on('data', (data) => {
-      sendLog(data.toString(), 'error');
+      const msg = data.toString();
+      if (msg.includes('HF_HUB_DISABLE_SYMLINKS_WARNING') || msg.includes('cache-system uses symlinks by default')) {
+        return;
+      }
+      sendLog(msg, 'error');
     });
 
     pythonProcess = proc;
@@ -228,7 +232,7 @@ function startPythonWorker(isPurgeRestart = false) {
       const proc = spawn(venvPython, ['-u', workerPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
-        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
+        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_SYMLINKS_WARNING: '1' }
       });
       proc.on('error', (err) => {
           sendLog(`SPAWN_FATAL: Isolated Python engine failed to launch. ${err.message}`, 'error');
@@ -248,7 +252,7 @@ function startPythonWorker(isPurgeRestart = false) {
            } else {
                sendLog(`[SYSTEM]: VENV Created. Installing core kernel packages...`, 'info');
                const pipExe = process.platform === 'win32' ? path.join(venvDir, 'Scripts', 'pip.exe') : path.join(venvDir, 'bin', 'pip');
-               exec(`"${pipExe}" install psutil requests`, (err3) => {
+               exec(`"${pipExe}" install psutil requests numpy==2.4.4`, (err3) => {
                   if (err3) {
                       sendLog(`[SYSTEM_CRITICAL]: Failed to install core packages!`, 'error');
                   } else {

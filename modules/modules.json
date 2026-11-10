@@ -145,7 +145,7 @@
           "id": "rapidocr",
           "label": "RAPID_OCR",
           "type": "lib",
-          "packages": ["rapidocr-onnxruntime", "opencv-python-headless"],
+          "packages": ["rapidocr-onnxruntime", "opencv-python"],
           "size": "~45 MB"
         }
       ]
@@ -233,24 +233,6 @@
           "type": "lib",
           "packages": ["vtracer", "Pillow"],
           "size": "~12 MB"
-        }
-      ]
-    },
-    {
-      "id": "WATERMARK_REMOVER",
-      "name": "WATERMARK_REMOVER",
-      "description": "Spatial Inpainting Reconstruction. Automatically detects and reconstructs overlaid watermarks, timestamps, and corner logos.",
-      "version": "v1.0.0",
-      "size": "6 KB",
-      "icon": "Eraser",
-      "url": "https://raw.githubusercontent.com/Nyat/AEXOR/main/modules/WATERMARK_REMOVER.py",
-      "deps": [
-        {
-          "id": "opencv",
-          "label": "OPENCV_CORE",
-          "type": "lib",
-          "packages": ["opencv-python-headless", "numpy", "Pillow"],
-          "size": "~45 MB"
         }
       ]
     },

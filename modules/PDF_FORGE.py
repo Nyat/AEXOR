@@ -5,14 +5,21 @@ from utils import log_event
 
 def handle(payload):
     try:
-        import fitz  # PyMuPDF
+        import warnings
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
 
         input_path = payload.get("input_path")
         output_path = payload.get("output_path")
         output_dir = payload.get("output_dir") or (os.path.dirname(output_path) if output_path else "./output")
         pdf_mode = str(payload.get("pdf_mode", "AUTO")).upper()
-        dpi = int(payload.get("pdf_dpi", 200))
-        batch_files = payload.get("batch_files") or ([input_path] if input_path else [])
+        dpi = int(payload.get("pdf_dpi") or payload.get("dpi") or 200)
+        batch_files = payload.get("batch_files") or payload.get("input_paths") or ([input_path] if input_path else [])
 
         os.makedirs(output_dir, exist_ok=True)
         ext = os.path.splitext(input_path)[1].lower() if input_path else ""

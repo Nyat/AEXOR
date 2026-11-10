@@ -8,9 +8,28 @@ _OCR_ENGINE = None
 _OCR_PROVIDER = None
 
 
+def _patch_rapidocr_cuda_opts():
+    """Switch RapidOCR's cuDNN conv search from EXHAUSTIVE to HEURISTIC for instant dynamic-shape GPU inference."""
+    try:
+        import rapidocr_onnxruntime.utils.infer_engine as ie
+        orig_get_ep = ie.OrtInferSession._get_ep_list
+        if not getattr(orig_get_ep, "_aexor_patched", False):
+            def _fast_get_ep_list(self):
+                ep_list = orig_get_ep(self)
+                for ep_name, opts in ep_list:
+                    if ep_name == "CUDAExecutionProvider" and isinstance(opts, dict):
+                        opts["cudnn_conv_algo_search"] = "HEURISTIC"
+                return ep_list
+            _fast_get_ep_list._aexor_patched = True
+            ie.OrtInferSession._get_ep_list = _fast_get_ep_list
+    except Exception:
+        pass
+
+
 def _get_ocr_engine(gpu_vendor="nvidia"):
     global _OCR_ENGINE, _OCR_PROVIDER
     ensure_cuda_dlls()
+    _patch_rapidocr_cuda_opts()
 
     import onnxruntime as ort
     avail = ort.get_available_providers()
@@ -123,5 +142,7 @@ def handle(payload):
         log_event("[PROGRESS: 100]", path=input_path)
         return {"status": "SUCCESS", "message": f"Extracted {len(lines)} text lines ({ocr_format}) via {_OCR_PROVIDER}."}
     except Exception as e:
-        log_event(f"NEURAL_OCR_ERROR: {str(e)}", level="error", path=payload.get("input_path"))
-        return {"status": "ERROR", "message": f"NEURAL_OCR_FAILURE: {str(e)}"}
+        cause = getattr(e, "__cause__", None)
+        err_detail = str(e) or (f"{type(e).__name__}: {cause}" if cause else repr(e))
+        log_event(f"NEURAL_OCR_ERROR: {err_detail}", level="error", path=payload.get("input_path"))
+        return {"status": "ERROR", "message": f"NEURAL_OCR_FAILURE: {err_detail}"}

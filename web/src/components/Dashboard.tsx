@@ -11,6 +11,7 @@ import { Sidebar } from './Sidebar';
 import { TelemetryView } from './TelemetryView';
 import { SystemLog } from './SystemLog';
 import { UpscalerSettings } from './ModulePanels/UpscalerSettings';
+import { BgRemoverSettings } from './ModulePanels/BgRemoverSettings';
 import { CompressorSettings } from './ModulePanels/CompressorSettings';
 import { ConverterSettings } from './ModulePanels/ConverterSettings';
 import { InstaSettings } from './ModulePanels/InstaSettings';
@@ -70,6 +71,7 @@ export const Dashboard = () => {
   const [settings, setSettings] = React.useState<any>({
     quality: 80,
     format: 'WEBP',
+    bgOutFormat: (localStorage.getItem('aexor-hub-bg-format') as 'PNG' | 'WEBP') || 'PNG',
     upscale: Number(localStorage.getItem('aexor-hub-upscale')) || 2,
     instaUrl: '',
     instaSessionId: localStorage.getItem('aexor-hub-insta-session') || '',
@@ -77,12 +79,9 @@ export const Dashboard = () => {
     resizerMode: 'FIT',
     resizerBg: 'BLACK',
     ocrFormat: 'TXT',
-    wmRegion: 'AUTO_DETECT',
-    wmAlgorithm: 'TELEA',
     paletteCount: 5,
     paletteMode: 'STUDIO_CARD',
     vectorColor: 'COLOR',
-    vectorPreset: 'POSTER',
     pdfMode: 'IMAGES_TO_PDF',
     pdfDpi: 300,
     mediaUrl: '',
@@ -604,7 +603,6 @@ export const Dashboard = () => {
         else if (activeModule === 'PHOTO_RESIZER') suffix = '-resized';
         else if (activeModule === 'FORMAT_CONVERTER') suffix = '-converted';
         else if (activeModule === 'NEURAL_OCR') suffix = '-ocr';
-        else if (activeModule === 'WATERMARK_REMOVER') suffix = '-clean';
         else if (activeModule === 'PALETTE_GENERATOR') suffix = '-palette';
         else if (activeModule === 'VECTOR_TRACER') suffix = '-vector';
         else if (activeModule === 'PDF_FORGE') suffix = currentSettings.pdfMode === 'COMPRESS_PDF' ? '-optimized' : '-forged';
@@ -618,7 +616,8 @@ export const Dashboard = () => {
         if ((sourceExt === 'heic' || sourceExt === 'heif') && activeModule !== 'FORMAT_CONVERTER' && activeModule !== 'IMAGE_COMPRESSOR') {
            finalExt = 'webp';
         }
-        if (activeModule === 'PHOTO_RESIZER') finalExt = 'webp';
+        if (activeModule === 'BG_REMOVER') finalExt = (currentSettings.bgOutFormat || 'PNG').toLowerCase();
+        else if (activeModule === 'PHOTO_RESIZER') finalExt = 'webp';
         else if (activeModule === 'NEURAL_OCR') finalExt = (currentSettings.ocrFormat || 'TXT').toLowerCase();
         else if (activeModule === 'PALETTE_GENERATOR') finalExt = 'png';
         else if (activeModule === 'VECTOR_TRACER') finalExt = 'svg';
@@ -660,7 +659,7 @@ export const Dashboard = () => {
             output_path: outputPath,
             url: isMediaDl ? currentSettings.mediaUrl : currentSettings.instaUrl,
             quality: currentSettings.quality,
-            format: currentSettings.format,
+            format: activeModule === 'BG_REMOVER' ? (currentSettings.bgOutFormat || 'PNG') : currentSettings.format,
             upscale: currentSettings.upscale,
             device: device,
             output_dir: targetDir,
@@ -670,27 +669,39 @@ export const Dashboard = () => {
             resize_mode: currentSettings.resizerMode,
             bg_color: currentSettings.resizerBg,
             ocr_format: currentSettings.ocrFormat,
-            region: currentSettings.wmRegion,
-            algorithm: currentSettings.wmAlgorithm,
             color_count: currentSettings.paletteCount,
+            palette_count: currentSettings.paletteCount,
             export_mode: currentSettings.paletteMode,
+            palette_mode: currentSettings.paletteMode,
             color_mode: currentSettings.vectorColor,
-            preset: currentSettings.vectorPreset,
+            vector_colormode: currentSettings.vectorColor,
             pdf_mode: currentSettings.pdfMode,
             dpi: currentSettings.pdfDpi,
+            pdf_dpi: currentSettings.pdfDpi,
+            batch_files: selectedFiles,
             media_mode: currentSettings.mediaMode,
+            media_format: currentSettings.mediaMode,
             media_quality: currentSettings.mediaQuality,
+            media_url: currentSettings.mediaUrl,
             video_mode: currentSettings.videoMode,
             resolution: currentSettings.videoRes,
+            video_scale: currentSettings.videoRes,
             fps: currentSettings.videoFps,
+            video_preset: currentSettings.videoFps,
             audio_mode: currentSettings.audioExtMode,
+            audio_extract_mode: currentSettings.audioExtMode,
             stem_mode: currentSettings.stemMode,
             model_size: currentSettings.whisperModel,
+            whisper_model: currentSettings.whisperModel,
             language: currentSettings.subLang,
+            whisper_lang: currentSettings.subLang,
             sub_format: currentSettings.subFormat,
+            whisper_format: currentSettings.subFormat,
             strength: currentSettings.denoiseStrength,
+            voice_strength: currentSettings.denoiseStrength,
             voice_boost: currentSettings.voiceBoost,
-            out_format: currentSettings.voiceOutFormat
+            out_format: currentSettings.voiceOutFormat,
+            voice_output: currentSettings.voiceOutFormat
           }
         });
 
@@ -781,7 +792,7 @@ export const Dashboard = () => {
         }}
       >
         <span className="text-[#00F3FF] font-orbitron text-[10px] tracking-[0.2em] pointer-events-none">
-          AEXOR_HUB // <span className="text-white">V0.18.9-GUARDIAN // BETA</span>
+          AEXOR_HUB // <span className="text-white">V0.19.1-GUARDIAN // BETA</span>
         </span>
         <div className="flex items-center h-full">
           <button onClick={() => handleWindowAction('minimize')} className="h-full px-3.5 hover:bg-white/10 transition-colors text-gray-500 hover:text-white flex items-center justify-center"><Minus size={14} /></button>
@@ -791,12 +802,7 @@ export const Dashboard = () => {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeModule={activeModule} setActiveModule={setActiveModule} installedModules={installedModules}>
-          <TelemetryView
-            telemetry={telemetry}
-            onPurgeMemory={handlePurgeMemory}
-            isPurging={isPurging}
-            disabled={isTaskRunning || installQueue.length > 0 || depInstallQueue.length > 0}
-          />
+          <TelemetryView telemetry={telemetry} />
         </Sidebar>
 
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
@@ -824,18 +830,17 @@ export const Dashboard = () => {
                 <h1 className="text-3xl font-anta tracking-[0.2em] text-white mb-2 uppercase">{activeModule}</h1>
                 <p className="text-gray-500 font-oxanium text-xs tracking-wider">
                   {activeModule === 'AI_UPSCALER' && "Neural super-resolution [JPG, PNG, WEBP, HEIC]. Enhances detail using ESRGAN."}
-                  {activeModule === 'BG_REMOVER' && "Alpha-mask extraction [JPG, PNG, WEBP, HEIC]. Outputs transparent PNG."}
+                  {activeModule === 'BG_REMOVER' && "Alpha-mask extraction [JPG, PNG, WEBP, HEIC]. Outputs transparent PNG or WEBP."}
                   {activeModule === 'FORMAT_CONVERTER' && "Lightning fast batch image format conversion [All formats supported]."}
                   {activeModule === 'IMAGE_COMPRESSOR' && "Lossless/Lossy compression for optimized storage [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'INSTA_DOWNLOADER' && "Extract high-quality media from Instagram links."}
                   {activeModule === 'PHOTO_RESIZER' && "Dynamic professional canvas resampling [JPG, PNG, WEBP, HEIC]."}
                   {activeModule === 'NEURAL_OCR' && "Optical character recognition [JPG, PNG, WEBP]. Exports structured TXT, Markdown, or JSON."}
-                  {activeModule === 'WATERMARK_REMOVER' && "Spatial inpainting reconstruction [JPG, PNG, WEBP]. Removes corner/center overlays."}
                   {activeModule === 'PALETTE_GENERATOR' && "Chromatic DNA extraction [JPG, PNG, WEBP, HEIC]. Generates swatch cards & CSS variables."}
                   {activeModule === 'VECTOR_TRACER' && "Raster-to-vector path synthesis [JPG, PNG, WEBP]. Outputs scalable SVG geometry."}
                   {activeModule === 'PDF_FORGE' && "Document matrix engine [PDF, JPG, PNG, WEBP]. Combine images to PDF, render pages, or compress."}
                   {activeModule === 'MEDIA_DOWNLOADER' && "Universal stream harvester [YouTube, X, TikTok, SoundCloud]. Downloads MP4, MP3, or WAV."}
-                  {activeModule === 'VIDEO_OPTIMIZER' && "Video & GIF Forge [MP4, MOV, MKV, WEBM]. H.264 compression, 2-pass GIF & Animated WebP."}
+                  {activeModule === 'VIDEO_OPTIMIZER' && "GPU Video & GIF Forge [MP4, MOV, MKV, WEBM]. NVENC H.264 compression, 2-pass GIF & Animated WebP."}
                   {activeModule === 'AUDIO_EXTRACTOR' && "Acoustic stream demuxer [MP4, MOV, MKV, WEBM]. Extracts 320kbps MP3, WAV, FLAC, or mutes video."}
                   {activeModule === 'AUDIO_SEPARATOR' && "Hybrid Transformer stem isolation & Vocal Remover [MP3, WAV, FLAC, MP4]. Powered by Demucs."}
                   {activeModule === 'AUTO_SUBTITLER' && "Neural speech-to-subtitle transcriber [MP4, MKV, MP3, WAV]. Outputs frame-accurate SRT/TXT."}
@@ -963,6 +968,7 @@ export const Dashboard = () => {
             <div className="flex items-center justify-between gap-4 mt-2 mb-6">
                <div className="flex items-center gap-4 flex-wrap min-w-0">
                    {activeModule === 'AI_UPSCALER' && <UpscalerSettings upscale={settings.upscale} setUpscale={(val) => { updateSettings({ upscale: val }); localStorage.setItem('aexor-hub-upscale', String(val)); addLog(`SCALE_FACTOR_SET: ${val}X`, 'info'); }} />}
+                    {activeModule === 'BG_REMOVER' && <BgRemoverSettings format={settings.bgOutFormat || 'PNG'} setFormat={(val) => { updateSettings({ bgOutFormat: val }); localStorage.setItem('aexor-hub-bg-format', val); addLog(`BG_OUTPUT_FORMAT_SET: ${val}`, 'info'); }} />}
                    {activeModule === 'FORMAT_CONVERTER' && <ConverterSettings format={settings.format} setFormat={(val) => updateSettings({ format: val })} />}
                    {activeModule === 'IMAGE_COMPRESSOR' && <CompressorSettings quality={settings.quality} setQuality={(val) => updateSettings({ quality: val })} />}
                    {activeModule === 'PHOTO_RESIZER' && <ResizerSettings 
@@ -982,7 +988,7 @@ export const Dashboard = () => {
             </main>
           )}
           </div>
-          <SystemLog logs={logs} isTaskRunning={isTaskRunning} activeModule={activeModule} dots={dots} />
+          <SystemLog logs={logs} isTaskRunning={isTaskRunning} activeModule={activeModule} dots={dots} onPurgeMemory={handlePurgeMemory} isPurging={isPurging} />
         </div>
       </div>
     </div>

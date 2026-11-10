@@ -10,7 +10,6 @@ import {
   Palette,
   FileSpreadsheet,
   Spline,
-  Eraser,
   Globe,
   Film,
   Music,
@@ -70,7 +69,6 @@ export const MODULE_CATEGORIES: CategoryGroup[] = [
       { id: 'PDF_FORGE', label: 'PDF_FORGE', icon: FileSpreadsheet },
       { id: 'PHOTO_RESIZER', label: 'PHOTO_RESIZER', icon: Scaling },
       { id: 'VECTOR_TRACER', label: 'VECTOR_TRACER', icon: Spline },
-      { id: 'WATERMARK_REMOVER', label: 'WATERMARK_REMOVER', icon: Eraser },
     ]
   },
   {

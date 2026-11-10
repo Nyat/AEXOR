@@ -10,9 +10,11 @@ interface SystemLogProps {
   isTaskRunning: boolean;
   activeModule: string;
   dots: string;
+  onPurgeMemory?: () => void;
+  isPurging?: boolean;
 }
 
-export const SystemLog = ({ logs, isTaskRunning, activeModule, dots }: SystemLogProps) => {
+export const SystemLog = ({ logs, isTaskRunning, activeModule, dots, onPurgeMemory, isPurging = false }: SystemLogProps) => {
   const [height, setHeight] = useState(200);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -68,7 +70,22 @@ export const SystemLog = ({ logs, isTaskRunning, activeModule, dots }: SystemLog
           
           <div className="flex-1 h-[1px] bg-white/10 mx-6 opacity-30 mt-1"></div>
           
-          <div className="flex items-center gap-6 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {onPurgeMemory && (
+              <button 
+                 type="button"
+                 onClick={onPurgeMemory}
+                 disabled={isPurging || isTaskRunning}
+                 title="Release VRAM & RAM held exclusively by Aexor neural engines"
+                 className={`px-3 py-1 rounded border text-[9px] tracking-widest font-anta transition-all uppercase flex items-center gap-1.5 cursor-pointer ${
+                   isPurging || isTaskRunning 
+                     ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                     : 'border-[#F205FF]/40 bg-[#F205FF]/5 text-[#F205FF] hover:bg-[#F205FF]/15 hover:border-[#F205FF] hover:shadow-[0_0_10px_rgba(242,5,255,0.3)] active:scale-95'
+                 }`}
+              >
+                {isPurging ? 'PURGING...' : 'PURGE_MEMORY'}
+              </button>
+            )}
             <button 
                onClick={() => setHeight(200)}
                className="px-3 py-1 rounded border border-white/10 text-gray-500 hover:text-[#00F3FF] hover:border-[#00F3FF]/30 text-[9px] tracking-widest font-anta transition-all bg-white/5 uppercase"

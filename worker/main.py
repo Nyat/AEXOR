@@ -1,6 +1,11 @@
 import sys
 import json
 import os
+import warnings
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+warnings.filterwarnings("ignore", message=".*symlinks.*")
+
 import threading
 import psutil
 import time
@@ -250,6 +255,39 @@ def _detect_best_cuda_config(default_index, include_audio=False):
         return default_index or "https://download.pytorch.org/whl/cu128", base_pkgs
 
 
+def _check_onnx_providers():
+    """Probe available ONNX Runtime execution providers in a clean subprocess with CUDA DLLs registered."""
+    try:
+        worker_dir = os.path.dirname(os.path.abspath(__file__))
+        script = (
+            "import os, sys; "
+            f"sys.path.insert(0, r'{worker_dir}'); "
+            "from utils import ensure_cuda_dlls; ensure_cuda_dlls(); "
+            "import onnxruntime as ort; print(','.join(ort.get_available_providers()))"
+        )
+        chk = subprocess.run(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd=worker_dir
+        )
+        return chk.stdout.strip() if chk.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _enforce_numpy_compat():
+    """Ensure numpy is pinned to <2.5 to maintain numba/scipy ABI compatibility."""
+    try:
+        import importlib.metadata
+        v = importlib.metadata.version("numpy")
+        major, minor = [int(x) for x in v.split(".")[:2]]
+        if (major, minor) >= (2, 5):
+            log_event(f"[SYSTEM] Detected incompatible NumPy {v}. Realigning to numpy==2.4.4 for Numba compatibility...", level="warning")
+            subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "numpy==2.4.4"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
 def handle_ecosystem(action, payload):
     appdata = os.environ.get('APPDATA')
     mod_dir = os.path.join(appdata, 'AEXOR HUB', 'modules') if appdata else ""
@@ -323,11 +361,7 @@ def handle_ecosystem(action, payload):
 
             # Case 1: ONNX Runtime GPU modules (BG_REMOVER, NEURAL_OCR)
             if any(p.startswith("onnxruntime") for p in packages):
-                chk_ort = subprocess.run(
-                    [sys.executable, "-c", "from utils import ensure_cuda_dlls; ensure_cuda_dlls(); import onnxruntime as ort; print(','.join(ort.get_available_providers()))"],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                )
-                prov_out = chk_ort.stdout.strip() if chk_ort.returncode == 0 else ""
+                prov_out = _check_onnx_providers()
 
                 if vendor == "nvidia":
                     if "CUDAExecutionProvider" in prov_out and _is_pkg_installed("nvidia-cublas-cu12") and _is_pkg_installed("nvidia-cudnn-cu12"):
@@ -340,9 +374,9 @@ def handle_ecosystem(action, payload):
                                 [sys.executable, "-m", "pip", "uninstall", "-y", conflict_pkg],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                             )
-                    packages = [p for p in ("onnxruntime-gpu", "nvidia-cublas-cu12", "nvidia-cudnn-cu12") if not _is_pkg_installed(p)]
+                    packages = [p for p in ("onnxruntime-gpu<1.21.0", "nvidia-cublas-cu12", "nvidia-cudnn-cu12") if not _is_pkg_installed(p)]
                     if not packages or "CUDAExecutionProvider" not in prov_out:
-                        packages = ["onnxruntime-gpu", "nvidia-cublas-cu12", "nvidia-cudnn-cu12"]
+                        packages = ["onnxruntime-gpu<1.21.0", "nvidia-cublas-cu12", "nvidia-cudnn-cu12"]
                     extra_index = ""
                     force_reinstall = False
                 else:
@@ -439,7 +473,7 @@ def handle_ecosystem(action, payload):
 
         if any("rapidocr" in p for p in packages):
             # Prevent rapidocr-onnxruntime from pulling CPU 'onnxruntime' over our GPU onnxruntime-gpu / onnxruntime-directml!
-            prereq_pkgs = ["pyclipper", "numpy", "six", "Shapely", "PyYAML", "Pillow", "opencv-python-headless"]
+            prereq_pkgs = ["pyclipper", "numpy", "six", "Shapely", "PyYAML", "Pillow", "opencv-python"]
             missing_pre = [p for p in prereq_pkgs if not _is_pkg_installed(p)]
             if missing_pre:
                 _run_pip_streaming([sys.executable, "-m", "pip", "install", "--default-timeout=1000"] + missing_pre)
@@ -465,11 +499,7 @@ def handle_ecosystem(action, payload):
 
             # Only if rapidocr-onnxruntime or rembg pulled CPU 'onnxruntime' over our GPU provider, remove ONLY the CPU 'onnxruntime' metadata/package if needed
             if any("rapidocr" in p or "rembg" in p for p in packages):
-                chk_after = subprocess.run(
-                    [sys.executable, "-c", "from utils import ensure_cuda_dlls; ensure_cuda_dlls(); import onnxruntime as ort; print(','.join(ort.get_available_providers()))"],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                )
-                prov_after = chk_after.stdout.strip() if chk_after.returncode == 0 else ""
+                prov_after = _check_onnx_providers()
                 if vendor == "nvidia" and _is_pkg_installed("onnxruntime-gpu") and "CUDAExecutionProvider" not in prov_after:
                     subprocess.run(
                         [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-directml"],
@@ -483,6 +513,7 @@ def handle_ecosystem(action, payload):
                     )
                     _run_pip_streaming([sys.executable, "-m", "pip", "install", "--default-timeout=1000", "--force-reinstall", "--no-deps", "onnxruntime-directml"])
 
+            _enforce_numpy_compat()
             ensure_cuda_dlls()
             log_event(f"[SYSTEM] Dependency {dep_id} established successfully.", level="info")
             return {"status": "SUCCESS", "message": f"{dep_id} installed"}
@@ -570,55 +601,6 @@ def process_command(cmd_data):
         payload["gpu_vendor"] = GPU_VENDOR
         ensure_cuda_dlls()
 
-        if GPU_VENDOR == "nvidia" and action in ("AI_UPSCALER", "AUDIO_SEPARATOR", "AUDIO_SEPERATOR") and "torch" not in sys.modules:
-            chk_cu = subprocess.run(
-                [sys.executable, "-c", "import torch; print(torch.__version__)"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            if chk_cu.returncode == 0 and "+cu" not in chk_cu.stdout.strip():
-                ver = chk_cu.stdout.strip()
-                log_event(f"[SYSTEM] CPU PyTorch ({ver}) detected. Upgrading to NVIDIA CUDA build...", level="info")
-                idx, pkgs = _detect_best_cuda_config("", include_audio=(action != "AI_UPSCALER"))
-                cmd = [
-                    sys.executable, "-m", "pip", "install", "--default-timeout=1000",
-                    "--force-reinstall", "--no-deps"
-                ] + pkgs + ["--index-url", idx]
-                _run_pip_streaming(cmd)
-
-        if action in ("NEURAL_OCR", "BG_REMOVER"):
-            chk_ort = subprocess.run(
-                [sys.executable, "-c", "from utils import ensure_cuda_dlls; ensure_cuda_dlls(); import onnxruntime as ort; print(','.join(ort.get_available_providers()))"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            prov_out = chk_ort.stdout.strip() if chk_ort.returncode == 0 else ""
-            if GPU_VENDOR == "nvidia" and "CUDAExecutionProvider" not in prov_out:
-                log_event("[SYSTEM] Aligning ONNX Runtime with NVIDIA CUDAExecutionProvider...", level="info")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-directml"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                _run_pip_streaming([
-                    sys.executable, "-m", "pip", "install", "--default-timeout=1000",
-                    "--force-reinstall", "onnxruntime-gpu", "nvidia-cublas-cu12", "nvidia-cudnn-cu12"
-                ])
-                ensure_cuda_dlls()
-                for m_key in list(sys.modules.keys()):
-                    if m_key.startswith("onnxruntime") or m_key.startswith("rapidocr") or m_key.startswith("rembg"):
-                        del sys.modules[m_key]
-            elif GPU_VENDOR == "amd" and "DmlExecutionProvider" not in prov_out:
-                log_event("[SYSTEM] Aligning ONNX Runtime with AMD DirectML ExecutionProvider...", level="info")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime", "onnxruntime-gpu"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                _run_pip_streaming([
-                    sys.executable, "-m", "pip", "install", "--default-timeout=1000",
-                    "--force-reinstall", "onnxruntime-directml"
-                ])
-                for m_key in list(sys.modules.keys()):
-                    if m_key.startswith("onnxruntime") or m_key.startswith("rapidocr") or m_key.startswith("rembg"):
-                        del sys.modules[m_key]
-
         handler = load_dynamic_handler(action)
         if handler:
             result = handler(payload)
@@ -644,5 +626,6 @@ def main():
             print(json.dumps(msg), flush=True)
 
 if __name__ == "__main__":
+    _enforce_numpy_compat()
     log_event(f"NEURAL_WORKER_ONLINE // GPU_TARGET: {DETECTED_GPU_NAME} ({GPU_VENDOR.upper()})", path="SYSTEM")
     main()

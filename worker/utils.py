@@ -1,7 +1,11 @@
 import json
 import os
 import sys
+import warnings
 from concurrent.futures import ThreadPoolExecutor
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+warnings.filterwarnings("ignore", message=".*symlinks.*")
 
 # Unified IO Pool for non-blocking disk operations
 IO_POOL = ThreadPoolExecutor(max_workers=4)

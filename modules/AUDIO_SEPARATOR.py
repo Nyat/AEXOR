@@ -2,6 +2,11 @@ import os
 import shutil
 import subprocess
 import tempfile
+import warnings
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+warnings.filterwarnings("ignore", message=".*symlinks.*")
+
 from utils import log_event, ensure_cuda_dlls
 
 _DEMUCS_MODEL = None

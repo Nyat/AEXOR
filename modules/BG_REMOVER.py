@@ -41,9 +41,14 @@ def handle(payload):
     output_img = remove(input_img, session=session)
     log_event("[PROGRESS: 90]", path=input_path)
     
+    out_format = payload.get("format", "").upper()
+
     def save_to_disk(img, path):
-         try: img.save(path, format="PNG")
-         except Exception as e: log_event(f"DISK_ERROR: {e}", level="error", path=input_path)
+         try:
+             fmt = "WEBP" if (out_format == "WEBP" or path.lower().endswith(".webp")) else "PNG"
+             img.save(path, format=fmt)
+         except Exception as e:
+             log_event(f"DISK_ERROR: {e}", level="error", path=input_path)
     
     IO_POOL.submit(save_to_disk, output_img, output_path)
     log_event("[PROGRESS: 100]", path=input_path)

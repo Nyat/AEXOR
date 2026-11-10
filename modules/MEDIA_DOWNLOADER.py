@@ -31,7 +31,7 @@ def handle(payload):
 
         url = str(payload.get("media_url") or payload.get("url") or "").strip()
         output_dir = payload.get("output_dir") or "./output"
-        media_format = str(payload.get("media_format", "VIDEO_MP4")).upper()
+        media_format = str(payload.get("media_format") or payload.get("media_mode") or "VIDEO_MP4").upper()
         media_quality = str(payload.get("media_quality", "BEST")).upper()
 
         if not url:

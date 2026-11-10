@@ -122,42 +122,6 @@ export const ExtendedModuleSettings = ({
     );
   }
 
-  if (activeModule === 'WATERMARK_REMOVER') {
-    const regions = [
-      { id: 'AUTO_DETECT', label: 'AUTO' },
-      { id: 'BOTTOM_RIGHT', label: 'BTM_R' },
-      { id: 'BOTTOM_LEFT', label: 'BTM_L' },
-      { id: 'TOP_RIGHT', label: 'TOP_R' },
-      { id: 'TOP_LEFT', label: 'TOP_L' },
-      { id: 'CENTER_STAMP', label: 'CENTER' }
-    ];
-    return (
-      <div className="flex items-center gap-3">
-        <GroupBox>
-          {regions.map((r) => (
-            <PillBtn
-              key={r.id}
-              active={settings.wmRegion === r.id}
-              label={r.label}
-              onClick={() => updateSettings({ wmRegion: r.id })}
-            />
-          ))}
-        </GroupBox>
-        <GroupBox>
-          {['TELEA', 'NS'].map((alg) => (
-            <PillBtn
-              key={alg}
-              active={settings.wmAlgorithm === alg}
-              label={alg}
-              accent="#F205FF"
-              onClick={() => updateSettings({ wmAlgorithm: alg })}
-            />
-          ))}
-        </GroupBox>
-      </div>
-    );
-  }
-
   if (activeModule === 'PALETTE_GENERATOR') {
     return (
       <div className="flex items-center gap-3">
@@ -200,21 +164,6 @@ export const ExtendedModuleSettings = ({
               active={settings.vectorColor === cm}
               label={cm}
               onClick={() => updateSettings({ vectorColor: cm })}
-            />
-          ))}
-        </GroupBox>
-        <GroupBox>
-          {[
-            { id: 'POSTER', label: 'POSTER' },
-            { id: 'LOGO_SHARP', label: 'LOGO_SHARP' },
-            { id: 'PHOTO_DETAILED', label: 'DETAILED' }
-          ].map((pr) => (
-            <PillBtn
-              key={pr.id}
-              active={settings.vectorPreset === pr.id}
-              label={pr.label}
-              accent="#F205FF"
-              onClick={() => updateSettings({ vectorPreset: pr.id })}
             />
           ))}
         </GroupBox>
